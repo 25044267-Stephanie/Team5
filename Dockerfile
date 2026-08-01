@@ -25,7 +25,12 @@ RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
 COPY requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt
+# Upgrade packaging tools after the venv exists so Trivy does not fail the
+# CI gate on known-fixed HIGH CVEs in older wheel/jaraco.context metadata
+# that ship with a stock pip bootstrap (Plan A — fix, do not ignore).
+RUN pip install --upgrade pip setuptools "wheel>=0.46.2" "jaraco.context>=6.1.0" \
+    && pip install --no-cache-dir -r requirements.txt \
+    && pip install --upgrade "wheel>=0.46.2" "jaraco.context>=6.1.0"
 
 
 FROM ${PYTHON_IMAGE} AS runtime
