@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+﻿from datetime import datetime, timedelta
 
 import pytest
 
@@ -18,6 +18,7 @@ from models import db
 
 
 def test_toiletries_request_non_peak_hour_estimate():
+    assert False, "deliberate CI failure for Stage A gating demo"
     estimate = hotel_app.estimate_request_time(
         "Toiletries: Toothbrush x2",
         current_time=datetime(2024, 1, 1, 9, 0),
@@ -381,7 +382,7 @@ def test_filter_rooms_by_room_type_returns_only_matching_rooms():
 
 def test_create_room_rejects_numbers_outside_one_to_fifty():
     # Replaces the old JSON-catalogue-migration test (normalize_rooms no
-    # longer exists — the database itself now enforces 1-50 via a CHECK
+    # longer exists â€” the database itself now enforces 1-50 via a CHECK
     # constraint, and create_room rejects anything derive_room_details can't
     # place before it ever reaches the database).
     assert repository.create_room("101") is None
@@ -450,7 +451,7 @@ def test_checkout_booking_never_awards_twice():
     second = repository.checkout_booking(repository.get_booking(booking["id"])["id"])
 
     assert first == 50
-    assert second is None  # already checked out — not eligible again
+    assert second is None  # already checked out â€” not eligible again
     assert repository.get_user("user")["points"] == 50
 
 
@@ -1004,7 +1005,7 @@ def test_checkout_action_grants_no_points_for_ineligible_statuses(client):
 
 
 def test_loyalty_points_persist_after_data_reload():
-    # Replaces the old JSON round-trip test — the "reload" is now proven by
+    # Replaces the old JSON round-trip test â€” the "reload" is now proven by
     # expiring SQLAlchemy's identity map and re-querying MySQL from scratch,
     # rather than dumping to and reloading data.json.
     make_user("newguest", points=75)
@@ -1082,7 +1083,7 @@ def test_refreshing_after_submission_does_not_duplicate_the_request(client):
 def test_reservation_request_queue_numbers_start_at_one_and_increment():
     # Replaces the old next_queue_number()-based tests. Queue numbers are now
     # simply the row's auto-increment id, which is inherently sequential and
-    # never reused — verified end-to-end (through the real /requests route)
+    # never reused â€” verified end-to-end (through the real /requests route)
     # by test_cancelled_ticket_number_is_never_reused_end_to_end below.
     first = make_request(username="user")
     second = make_request(username="user")
@@ -1397,7 +1398,7 @@ def test_valid_feedback_submission_is_stored_with_booking_details_and_timestamp(
 
 
 def test_feedback_persists_after_data_reload():
-    # Replaces the old JSON round-trip test — "persists after reload" is now
+    # Replaces the old JSON round-trip test â€” "persists after reload" is now
     # proven by expiring SQLAlchemy's identity map and re-querying MySQL.
     make_booking(id=1, username="user")
     make_feedback(booking_id=1, additional_feedback="Persisted feedback")
