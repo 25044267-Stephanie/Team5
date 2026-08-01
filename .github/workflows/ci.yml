@@ -104,7 +104,10 @@ jobs:
       - name: Run pytest (111 tests)
         run: |
           mkdir -p reports
-          pytest --junitxml=reports/junit.xml --tb=short | tee reports/pytest.txt
+          # pipefail: without it, `tee` masks pytest's non-zero exit and the
+          # Test job would stay green even when tests fail (breaks FA gating).
+          set -o pipefail
+          python -m pytest --junitxml=reports/junit.xml --tb=short | tee reports/pytest.txt
 
       - name: Upload pytest JUnit report
         if: always()
