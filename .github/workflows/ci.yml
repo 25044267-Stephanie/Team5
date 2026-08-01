@@ -1,0 +1,167 @@
+# Continuous Integration — runs on every push and pull request.
+#
+# WHY this shape:
+# - lint + test run in parallel (fast feedback); both must pass before build.
+# - build + Trivy share one job so we scan the exact image Buildx just loaded
+#   (no multi-hundred-MB artifact hop between runners).
+# - Trivy exit-code 1 on HIGH/CRITICAL is a real merge gate (DevSecOps),
+#   not a report-only step. ignore-unfixed avoids failing the demo on CVEs
+#   with no upstream fix yet.
+# - Actions are pinned by commit SHA (immutable) after the Actions
+#   supply-chain incidents — floating tags alone are not enough.
+# - No long-lived cloud credentials here; ECR push + deploy arrive in Phase 5.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  PYTHON_VERSION: "3.11"
+  IMAGE_NAME: c270-hotel-management
+  # CI-only values — not production secrets. Safe to be plaintext in the workflow.
+  FLASK_SECRET_KEY: ci-only-secret-not-for-production
+  MYSQL_HOST: 127.0.0.1
+  MYSQL_PORT: "3306"
+  MYSQL_USER: hotel_test
+  MYSQL_PASSWORD: hotel_test_password
+  MYSQL_DATABASE: hotel_management_test
+  MYSQL_TEST_DATABASE: hotel_management_test
+
+jobs:
+  lint:
+    name: Lint (ruff)
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+
+      - name: Install lint tools
+        run: pip install --upgrade pip && pip install -r requirements-dev.txt
+
+      - name: Ruff check
+        run: ruff check app.py config.py models.py repository.py scripts tests
+
+  test:
+    name: Test (pytest + MySQL 8.4)
+    runs-on: ubuntu-24.04
+    services:
+      mysql:
+        # Same major as local Compose / future RDS. Digest matches docker-compose.yml.
+        image: mysql:8.4@sha256:b3b90af2a6552ae30c266fdb7d5dd55f3afb72404bb78d37fe8a23eb857fd3fb
+        env:
+          MYSQL_ROOT_PASSWORD: ci-root-password
+          MYSQL_DATABASE: hotel_management_test
+          MYSQL_USER: hotel_test
+          MYSQL_PASSWORD: hotel_test_password
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -pci-root-password --silent"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+
+      - name: Install dependencies
+        run: pip install --upgrade pip && pip install -r requirements-dev.txt
+
+      - name: Run pytest (111 tests)
+        run: |
+          mkdir -p reports
+          pytest --junitxml=reports/junit.xml --tb=short | tee reports/pytest.txt
+
+      - name: Upload pytest report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: pytest-report-${{ github.run_id }}
+          path: reports/
+          if-no-files-found: warn
+          retention-days: 14
+
+  build-and-scan:
+    name: Build image + Trivy scan
+    needs: [lint, test]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      - name: Build image (Buildx + GHA layer cache)
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: .
+          file: ./Dockerfile
+          load: true
+          tags: |
+            ${{ env.IMAGE_NAME }}:${{ github.sha }}
+            ${{ env.IMAGE_NAME }}:ci
+          cache-from: type=gha,scope=hotel-app
+          cache-to: type=gha,mode=max,scope=hotel-app
+
+      # Pin to the post-incident safe SHA published by Aqua/Snyk guidance (v0.35.0).
+      - name: Trivy scan (fail on HIGH/CRITICAL)
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
+        with:
+          image-ref: ${{ env.IMAGE_NAME }}:${{ github.sha }}
+          format: table
+          exit-code: "1"
+          ignore-unfixed: true
+          vuln-type: os,library
+          severity: CRITICAL,HIGH
+          scanners: vuln
+
+      - name: Export Trivy JSON report
+        if: always()
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
+        with:
+          image-ref: ${{ env.IMAGE_NAME }}:${{ github.sha }}
+          format: json
+          output: trivy-report.json
+          ignore-unfixed: true
+          vuln-type: os,library
+          severity: CRITICAL,HIGH,MEDIUM
+          scanners: vuln
+          exit-code: "0"
+
+      - name: Upload Trivy report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: trivy-report-${{ github.run_id }}
+          path: trivy-report.json
+          if-no-files-found: warn
+          retention-days: 14

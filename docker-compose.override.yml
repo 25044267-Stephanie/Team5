@@ -1,0 +1,10 @@
+# Local development overrides — auto-merged by `docker compose up`.
+#
+# WHY: Keeps `build: .` out of the base file so production never accidentally
+# rebuilds from the EC2 checkout. CD sets IMAGE_NAME to the ECR SHA tag and
+# runs compose with only docker-compose.yml.
+
+services:
+  app:
+    build: .
+    image: ${IMAGE_NAME:-c270-hotel-management:local}

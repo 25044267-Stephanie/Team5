@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Guest Feedback</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="has-navbar">
+    <nav class="navbar">
+        <div class="navbar-brand">
+            <a href="/admin/dashboard" class="navbar-logo">🏨 Hotel Manager</a>
+        </div>
+        <div class="navbar-right">
+            <span class="navbar-user">{{ session.username }}</span>
+            <a href="/logout" class="navbar-logout">Logout</a>
+        </div>
+    </nav>
+
+    <div style="background: var(--sand); padding: 0.75rem 0;">
+        <div style="padding-left: 3cm;">
+            <a href="/admin/dashboard" class="btn btn-gold" style="font-size: 0.85rem; padding: 0.5rem 1rem;">← Back</a>
+        </div>
+    </div>
+
+    <section style="background: var(--sand); min-height: calc(100vh - 70px); padding-top: 80px;">
+        <div class="container" style="max-width: 1100px;">
+            <h1 style="margin-bottom: 0.5rem;">Guest Feedback</h1>
+            <p class="subtitle" style="margin-bottom: 2rem;">Review feedback submitted by guests after their stay.</p>
+
+            <div class="feedback-summary-row">
+                <div class="feedback-summary-card">
+                    <span class="feedback-summary-label">Total Feedback</span>
+                    <span class="feedback-summary-value">{{ feedback_entries|length }}</span>
+                </div>
+            </div>
+
+            {% if feedback_entries %}
+            <div style="background: var(--white); border-radius: var(--radius-lg); box-shadow: var(--shadow-md); overflow-x: auto;">
+                <table class="feedback-table">
+                    <thead>
+                        <tr>
+                            <th>Customer Name</th>
+                            <th>Username</th>
+                            <th>Room</th>
+                            <th>Check-In</th>
+                            <th>Check-Out</th>
+                            <th>Facilities</th>
+                            <th>Amenities</th>
+                            <th>Comfort &amp; Cleanliness</th>
+                            <th>Written Feedback</th>
+                            <th>Submitted At</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for entry in feedback_entries %}
+                        <tr>
+                            <td>{{ entry.guest_name }}</td>
+                            <td>{{ entry.username }}</td>
+                            <td>
+                                {{ entry.room_number }}
+                                {% if entry.room_type %}({{ entry.room_type }}){% endif %}
+                            </td>
+                            <td>{{ entry.checkin_date }}</td>
+                            <td>{{ entry.checkout_date }}</td>
+                            <td class="feedback-star-cell">{{ entry.facilities_rating }}/5</td>
+                            <td class="feedback-star-cell">{{ entry.amenities_rating }}/5</td>
+                            <td class="feedback-star-cell">{{ entry.comfort_cleanliness_rating }}/5</td>
+                            <td class="feedback-comment-cell">{{ entry.additional_feedback }}</td>
+                            <td>{{ entry.submitted_at }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="no-rooms-message">
+                <p style="font-size: 1.1rem; color: var(--text-2);">No guest feedback has been submitted yet.</p>
+            </div>
+            {% endif %}
+        </div>
+    </section>
+
+    <script>
+        const navbar = document.querySelector('.navbar');
+        window.addEventListener('scroll', () => {
+            if (window.scrollY > 60) navbar.classList.add('scrolled');
+            else navbar.classList.remove('scrolled');
+        });
+    </script>
+</body>
+</html>

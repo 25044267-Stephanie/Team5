@@ -1,0 +1,20 @@
+# Secrets — never commit any env file except the tracked example template.
+.env
+*.env
+!.env.example
+Team5_HotelManagement_Project.env
+
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.ruff_cache/
+.venv/
+.venv-pin/
+mysql-data/
+*.egg-info/
+.coverage
+htmlcov/
+reports/
+trivy-report.json
+data.json.bak

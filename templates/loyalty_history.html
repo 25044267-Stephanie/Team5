@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Loyalty Points History</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="has-navbar">
+    <nav class="navbar">
+        <div class="navbar-brand">
+            <a href="/user/dashboard" class="navbar-logo">🏨 Hotel Manager</a>
+        </div>
+        <div class="navbar-right">
+            <span class="navbar-user">{{ session.username }}</span>
+            <a href="/logout" class="navbar-logout">Logout</a>
+        </div>
+    </nav>
+
+    <div style="background: var(--sand); padding: 0.75rem 0;">
+        <div style="padding-left: 3cm;">
+            <a href="/user/dashboard" class="btn btn-gold" style="font-size: 0.85rem; padding: 0.5rem 1rem;">← Back</a>
+        </div>
+    </div>
+
+    <section style="background: var(--sand); min-height: calc(100vh - 70px); padding-top: 80px;">
+        <div class="container" style="max-width: 820px;">
+            <h1 style="margin-bottom: 0.5rem;">Loyalty Points History</h1>
+            <p class="subtitle" style="margin-bottom: 1.5rem;">Every point you've earned from stays and redeemed on bookings.</p>
+
+            <div style="background: var(--white); border-radius: var(--radius-lg); box-shadow: var(--shadow-md); padding: 1.25rem 1.5rem; margin-bottom: 1.5rem; display: flex; align-items: center; justify-content: space-between;">
+                <div>
+                    <p style="margin: 0; color: var(--text-3); font-size: 13px;">Current Balance</p>
+                    <p style="margin: 0; font-size: 1.75rem; font-weight: 700; color: var(--gold);">{{ points_balance }} pts</p>
+                    <p style="margin: 0.35rem 0 0; font-size: 0.9rem; font-weight: 600;">
+                        {{ tier_icon }} {{ tier_name }} Member
+                        {% if points_to_next_tier %}
+                            <span style="font-weight: 400; color: var(--text-3);">— {{ points_to_next_tier }} pts to {{ next_tier_name }}</span>
+                        {% endif %}
+                    </p>
+                </div>
+                <span style="font-size: 2rem;">⭐</span>
+            </div>
+
+            <div style="background: var(--white); border-radius: var(--radius-lg); box-shadow: var(--shadow-md); padding: 1.25rem 1.5rem; margin-bottom: 1.5rem;">
+                <h2 style="margin: 0 0 0.25rem; font-size: 1.1rem;">How Membership Works</h2>
+                <p style="margin: 0 0 1rem; color: var(--text-3); font-size: 0.9rem;">
+                    Your tier is based on lifetime points earned (redeeming points never lowers it) and boosts how many points you earn on every future stay.
+                </p>
+                <div style="overflow-x: auto;">
+                    <table class="feedback-table">
+                        <thead>
+                            <tr>
+                                <th>Tier</th>
+                                <th>Lifetime Points Required</th>
+                                <th>Earn Rate</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for tier in tier_overview %}
+                                <tr {% if tier.name == tier_name %}style="font-weight: 700; background: var(--sand);"{% endif %}>
+                                    <td>
+                                        {{ tier.icon }} {{ tier.name }}
+                                        {% if tier.name == tier_name %}
+                                            <span class="status-badge status-checkedin" style="margin-left: 0.5rem; font-weight: 600;">You are here</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>{{ tier.threshold }}+ pts</td>
+                                    <td>
+                                        {{ tier.multiplier }}x
+                                        {% if tier.multiplier > 1.0 %}
+                                            <span style="font-weight: 400; color: var(--text-3);">— earn {{ ((tier.multiplier - 1) * 100) | round | int }}% more points per stay</span>
+                                        {% else %}
+                                            <span style="font-weight: 400; color: var(--text-3);">— standard rate</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                <p style="margin: 1rem 0 0; color: var(--text-3); font-size: 0.85rem;">
+                    Redeeming: every {{ loyalty_points_per_dollar }} pts = $1 off a stay, {{ minimum_points_redemption }} pts minimum per redemption.
+                </p>
+                <p style="margin: 0.35rem 0 0; color: var(--text-3); font-size: 0.85rem;">
+                    Expiry: your points balance is forfeited after {{ (points_expiry_days | default(365)) // 30 }} months with no earning, redeeming, or adjustment activity. Your tier is never affected.
+                </p>
+            </div>
+
+            {% if ledger %}
+                <div style="margin-bottom: 1rem; display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                    <button type="button" class="btn btn-primary btn-small ledger-filter-btn" data-filter="all">All</button>
+                    <button type="button" class="btn btn-outline btn-small ledger-filter-btn" data-filter="Earned">Earned</button>
+                    <button type="button" class="btn btn-outline btn-small ledger-filter-btn" data-filter="Redeemed">Redeemed</button>
+                    <button type="button" class="btn btn-outline btn-small ledger-filter-btn" data-filter="Adjusted">Adjusted</button>
+                </div>
+                <div style="background: var(--white); border-radius: var(--radius-lg); box-shadow: var(--shadow-md); overflow-x: auto;">
+                    <table class="feedback-table" id="ledger-table">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Type</th>
+                                <th>Nights Stayed</th>
+                                <th>Room Type</th>
+                                <th>Description</th>
+                                <th>Points</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for entry in ledger %}
+                                <tr data-type="{{ entry.type }}">
+                                    <td>{{ entry.display_date }}</td>
+                                    <td>
+                                        {% if entry.type == 'Earned' %}
+                                            <span class="status-badge status-checkedin">Earned</span>
+                                        {% elif entry.type == 'Adjusted' %}
+                                            <span class="status-badge status-pending">Adjusted</span>
+                                        {% elif entry.type == 'Expired' %}
+                                            <span class="status-badge status-cancelled">Expired</span>
+                                        {% else %}
+                                            <span class="status-badge status-booked">Redeemed</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>{{ entry.nights_label }}</td>
+                                    <td>{{ entry.room_type }}</td>
+                                    <td>{{ entry.description }}</td>
+                                    <td style="font-weight: 600; color: {% if entry.points >= 0 %}var(--gold){% else %}var(--text-2){% endif %};">
+                                        {% if entry.points >= 0 %}+{% endif %}{{ entry.points }}
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                    <p id="ledger-empty-filter" style="display:none; text-align:center; padding:2rem; color: var(--text-3);">
+                        No entries in this category.
+                    </p>
+                </div>
+            {% else %}
+                <div style="text-align: center; padding: 3rem; background: var(--white); border-radius: var(--radius-lg);">
+                    <p style="font-size: 1.2rem; color: var(--text-2);">No loyalty point activity yet.</p>
+                    <p style="color: var(--text-3);">Book a stay and check out to start earning points.</p>
+                </div>
+            {% endif %}
+        </div>
+    </section>
+
+    <script>
+        const navbar = document.querySelector('.navbar');
+        window.addEventListener('scroll', () => {
+            if (window.scrollY > 60) navbar.classList.add('scrolled');
+            else navbar.classList.remove('scrolled');
+        });
+
+        // ---- Ledger type filter (All / Earned / Redeemed / Adjusted) ----
+        // "Adjusted" also covers "Expired" rows, since both are non-stay
+        // balance changes rather than something a guest booked or redeemed.
+        const ledgerFilterGroups = {
+            all: null,
+            Earned: ['Earned'],
+            Redeemed: ['Redeemed'],
+            Adjusted: ['Adjusted', 'Expired'],
+        };
+        const ledgerFilterButtons = document.querySelectorAll('.ledger-filter-btn');
+        const ledgerRows = document.querySelectorAll('#ledger-table tbody tr');
+        const ledgerEmptyFilterMessage = document.getElementById('ledger-empty-filter');
+
+        ledgerFilterButtons.forEach((button) => {
+            button.addEventListener('click', () => {
+                ledgerFilterButtons.forEach((b) => {
+                    b.classList.remove('btn-primary');
+                    b.classList.add('btn-outline');
+                });
+                button.classList.remove('btn-outline');
+                button.classList.add('btn-primary');
+
+                const types = ledgerFilterGroups[button.dataset.filter];
+                let visibleCount = 0;
+                ledgerRows.forEach((row) => {
+                    const matches = !types || types.includes(row.dataset.type);
+                    row.style.display = matches ? '' : 'none';
+                    if (matches) visibleCount += 1;
+                });
+                if (ledgerEmptyFilterMessage) {
+                    ledgerEmptyFilterMessage.style.display = visibleCount === 0 ? 'block' : 'none';
+                }
+            });
+        });
+    </script>
+</body>
+</html>

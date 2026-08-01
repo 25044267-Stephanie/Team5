@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Guest Dashboard</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="has-navbar">
+    <!-- NAVIGATION -->
+    <nav class="navbar">
+        <div class="navbar-brand">
+            <a href="{% if session["role"] == "admin" %}/admin/dashboard{% else %}/user/dashboard{% endif %}" class="navbar-logo">🏨 Hotel Manager</a>
+        </div>
+        <div class="navbar-right">
+            <span class="navbar-user">Welcome, {{ session.username }}!</span>
+            <a href="/logout" class="navbar-logout">Logout</a>
+        </div>
+    </nav>
+
+    <!-- DASHBOARD -->
+    <section class="dashboard">
+        <div class="container">
+            <div class="dashboard-header">
+                <h1 class="dashboard-title">Guest Dashboard</h1>
+                <p class="dashboard-subtitle">Explore rooms, manage your bookings, and handle your stay with us</p>
+            </div>
+
+            {% if tier_up_notification %}
+                <div class="alert alert-success">
+                    {{ tier_up_notification.tier_icon }} Congrats, you're now a {{ tier_up_notification.tier_name }} Member!
+                </div>
+            {% endif %}
+
+            {% if points_earned_notification %}
+                <div class="alert alert-success">
+                    ⭐ You just earned {{ points_earned_notification }} loyalty points from a recent stay!
+                </div>
+            {% endif %}
+
+            {% if stay_reminder %}
+                <div class="alert alert-success">
+                    📅 {{ stay_reminder }}
+                </div>
+            {% endif %}
+
+            <div style="background: var(--white); border-radius: var(--radius-lg); box-shadow: var(--shadow-md); padding: 1.25rem 1.5rem; margin-bottom: 1.5rem; display: flex; align-items: center; justify-content: space-between;">
+                <div>
+                    <p style="margin: 0; color: var(--text-3); font-size: 13px;">Loyalty Points</p>
+                    <p style="margin: 0; font-size: 1.75rem; font-weight: 700; color: var(--gold);">{{ points_balance }}</p>
+                    <p style="margin: 0.35rem 0 0; font-size: 0.9rem; font-weight: 600;">
+                        {{ tier_icon }} {{ tier_name }} Member
+                        {% if points_to_next_tier %}
+                            <span style="font-weight: 400; color: var(--text-3);">— {{ points_to_next_tier }} pts to {{ next_tier_name }}</span>
+                        {% endif %}
+                    </p>
+                </div>
+                <div style="display: flex; align-items: center; gap: 1rem;">
+                    <a href="/loyalty/history" class="btn btn-outline btn-small">View History</a>
+                    <span style="font-size: 2rem;">⭐</span>
+                </div>
+            </div>
+
+            <div class="dashboard-grid">
+                <a href="/rooms" class="dashboard-item">
+                    <span class="dashboard-icon">🏠</span>
+                    <h3 class="dashboard-item-title">Find Rooms</h3>
+                    <p class="dashboard-item-desc">Browse available rooms and view details</p>
+                </a>
+                
+                <a href="/bookings" class="dashboard-item">
+                    <span class="dashboard-icon">📅</span>
+                    <h3 class="dashboard-item-title">My Bookings</h3>
+                    <p class="dashboard-item-desc">View and manage your reservations</p>
+                </a>
+                
+                <a href="/requests" class="dashboard-item">
+                    <span class="dashboard-icon">💬</span>
+                    <h3 class="dashboard-item-title">Send Request</h3>
+                    <p class="dashboard-item-desc">Submit special requests for your stay</p>
+                </a>
+                
+                <a href="/checkin" class="dashboard-item">
+                    <span class="dashboard-icon">✅</span>
+                    <h3 class="dashboard-item-title">Check-In Status</h3>
+                    <p class="dashboard-item-desc">View your check-in information</p>
+                </a>
+
+                <a href="/feedback" class="dashboard-item">
+                    <span class="dashboard-icon">📝</span>
+                    <h3 class="dashboard-item-title">Feedback Form</h3>
+                    <p class="dashboard-item-desc">Share your opinions about your staycation</p>
+                </a>
+
+                <a href="/my-feedback" class="dashboard-item">
+                    <span class="dashboard-icon">📋</span>
+                    <h3 class="dashboard-item-title">My Feedback</h3>
+                    <p class="dashboard-item-desc">View feedback you have already submitted</p>
+                </a>
+            </div>
+        </div>
+    </section>
+
+    <script>
+        // Add navbar scroll effect
+        const navbar = document.querySelector('.navbar');
+        window.addEventListener('scroll', () => {
+            if (window.scrollY > 60) {
+                navbar.classList.add('scrolled');
+            } else {
+                navbar.classList.remove('scrolled');
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Check-In</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="has-navbar">
+    {% macro booking_card(booking, muted=False, show_cancel=False) %}
+        <div class="booking-card{% if muted %} booking-card-muted{% endif %}">
+            <div class="booking-card-top">
+                <div>
+                    <h3>{{ booking.get('guest_name', 'N/A') }}</h3>
+                    <p class="booking-card-subtitle">Room {{ booking.get('room_number', 'N/A') }} • {{ booking.get('room_type', 'N/A') }}</p>
+                </div>
+                <span class="{{ booking.status_badge.class }}">{{ booking.status_badge.label }}</span>
+            </div>
+
+            <div class="booking-meta-grid">
+                <div class="booking-meta-item">
+                    <p class="booking-info-label">Check-in</p>
+                    <p class="booking-info-value">{{ booking.get('checkin_date', 'N/A') }}</p>
+                </div>
+                <div class="booking-meta-item">
+                    <p class="booking-info-label">Check-out</p>
+                    <p class="booking-info-value">{{ booking.get('checkout_date', 'N/A') }}</p>
+                </div>
+                <div class="booking-meta-item">
+                    <p class="booking-info-label">Stay</p>
+                    <p class="booking-info-value">{% if booking.get('nights') is not none %}{{ booking.get('nights') }} night{% if booking.get('nights') != 1 %}s{% endif %}{% else %}N/A{% endif %}</p>
+                </div>
+                <div class="booking-meta-item">
+                    <p class="booking-info-label">Contact</p>
+                    <p class="booking-info-value">{{ booking.get('email', 'N/A') }}</p>
+                </div>
+            </div>
+
+            {% if show_cancel %}
+                <div class="booking-card-footer">
+                    <span></span>
+                    <div class="booking-actions">
+                        <form action="{{ url_for('cancel_booking', booking_id=booking.get('id')) }}" method="post" class="inline-form" onsubmit="return confirm('Cancel this booking?');">
+                            <button class="btn btn-outline btn-small" type="submit">Cancel Booking</button>
+                        </form>
+                    </div>
+                </div>
+            {% endif %}
+        </div>
+    {% endmacro %}
+
+    <nav class="navbar">
+        <div class="navbar-brand">
+            <a href="{% if session["role"] == "admin" %}/admin/dashboard{% else %}/user/dashboard{% endif %}" class="navbar-logo">🏨 Hotel Manager</a>
+        </div>
+        <div class="navbar-right">
+            <span class="navbar-user">{{ session.username }}</span>
+            <a href="/logout" class="navbar-logout">Logout</a>
+        </div>
+    </nav>
+
+    <div class="page-topbar">
+        <div class="container page-topbar-inner">
+            {% if session["role"] == "admin" %}
+                <a href="/admin/dashboard" class="btn btn-gold btn-small">← Back</a>
+            {% else %}
+                <a href="/user/dashboard" class="btn btn-gold btn-small">← Back</a>
+            {% endif %}
+        </div>
+    </div>
+
+    <section class="checkin-page">
+        <div class="container checkin-shell">
+            <div class="page-heading">
+                <div>
+                    <h1>Check-In Management</h1>
+                    <p class="subtitle">Keep arrivals, stays, and departures organised in one smooth view.</p>
+                </div>
+                <div class="page-pill">{{ session.get('role', 'guest') | capitalize }} • {{ bookings_count }} bookings</div>
+            </div>
+
+            {% if message %}
+                <div class="alert alert-success">
+                    {{ message }}
+                </div>
+            {% endif %}
+
+            {% if session["role"] == "admin" %}
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <span class="stat-label">Total bookings</span>
+                        <strong>{{ dashboard.total_bookings }}</strong>
+                    </div>
+                    <div class="stat-card">
+                        <span class="stat-label">Checked in</span>
+                        <strong>{{ dashboard.checked_in_count }}</strong>
+                    </div>
+                    <div class="stat-card">
+                        <span class="stat-label">Arrivals today</span>
+                        <strong>{{ dashboard.arrivals_today }}</strong>
+                    </div>
+                    <div class="stat-card">
+                        <span class="stat-label">Departures today</span>
+                        <strong>{{ dashboard.departures_today }}</strong>
+                    </div>
+                    <div class="stat-card">
+                        <span class="stat-label">Occupancy rate</span>
+                        <strong>{{ dashboard.occupancy_rate }}%</strong>
+                    </div>
+                </div>
+
+                <form method="GET" action="{{ url_for('checkin') }}" style="margin: 1rem 0; display:flex; gap:0.75rem; align-items:center; flex-wrap:wrap;">
+                    <input type="text" name="search" value="{{ search }}" placeholder="Search guest, room, phone, email" style="flex:1; min-width:220px; max-width:340px;">
+                    <button type="submit" class="btn btn-primary btn-small">Search</button>
+                    {% if search %}
+                        <a href="{{ url_for('checkin') }}" class="btn btn-outline btn-small">Clear</a>
+                    {% endif %}
+                </form>
+            {% else %}
+                <div class="user-spotlight">
+                    {% if dashboard.next_booking %}
+                        <div class="spotlight-content">
+                            <div>
+                                <p class="stat-label">Next stay</p>
+                                <h3>{{ dashboard.next_booking.get('guest_name', 'Guest') }}</h3>
+                                <p class="spotlight-copy">Room {{ dashboard.next_booking.get('room_number', 'N/A') }} • {{ dashboard.next_booking.get('room_type', 'N/A') }} • {{ dashboard.next_booking.get('nights') or '1' }} night{% if dashboard.next_booking.get('nights') != 1 %}s{% endif %}</p>
+                                <p class="spotlight-copy">
+                                    {% if dashboard.next_booking.get('days_until_checkin', 0) > 0 %}
+                                        Arrives in {{ dashboard.next_booking.get('days_until_checkin') }} day{% if dashboard.next_booking.get('days_until_checkin') != 1 %}s{% endif %}.
+                                    {% elif dashboard.next_booking.get('status') == 'Checked In' %}
+                                        Your stay is currently active.
+                                    {% elif dashboard.next_booking.get('is_today_arrival') %}
+                                        Your stay begins today.
+                                    {% else %}
+                                        Your stay is on schedule.
+                                    {% endif %}
+                                </p>
+                            </div>
+                            <div class="spotlight-actions">
+                                <a href="{{ url_for('user_requests') }}" class="btn btn-secondary btn-small">Special requests</a>
+                                <a href="{{ url_for('view_bookings') }}" class="btn btn-gold btn-small">View bookings</a>
+                            </div>
+                        </div>
+                    {% else %}
+                        <div class="empty-state">
+                            <p>You do not currently have an upcoming stay scheduled.</p>
+                        </div>
+                    {% endif %}
+                </div>
+            {% endif %}
+
+            {% if session['role'] == 'admin' %}
+            {% if current_bookings | length > 0 %}
+                <div class="section-heading">
+                    <h2>Current / Upcoming Bookings</h2>
+                    <p>Live status for every active stay and future arrival.</p>
+                </div>
+                <div class="booking-stack">
+                    {% for booking in current_bookings %}
+                        {% set is_overdue_arrival = booking.get('status') == 'Booked' and booking.get('days_until_checkin') is not none and booking.get('days_until_checkin') < 0 %}
+                        <div class="booking-card">
+                            <div class="booking-card-top">
+                                <div>
+                                    <h3>{{ booking.get('guest_name', 'N/A') }}</h3>
+                                    <p class="booking-card-subtitle">Room {{ booking.get('room_number', 'N/A') }} • {{ booking.get('room_type', 'N/A') }}</p>
+                                </div>
+                                <span class="{{ booking.status_badge.class }}">{{ booking.status_badge.label }}</span>
+                            </div>
+
+                            <div class="booking-meta-grid">
+                                <div class="booking-meta-item">
+                                    <p class="booking-info-label">Check-in</p>
+                                    <p class="booking-info-value">{{ booking.get('checkin_date', 'N/A') }}</p>
+                                </div>
+                                <div class="booking-meta-item">
+                                    <p class="booking-info-label">Check-out</p>
+                                    <p class="booking-info-value">{{ booking.get('checkout_date', 'N/A') }}</p>
+                                </div>
+                                <div class="booking-meta-item">
+                                    <p class="booking-info-label">Stay</p>
+                                    <p class="booking-info-value">{% if booking.get('nights') is not none %}{{ booking.get('nights') }} night{% if booking.get('nights') != 1 %}s{% endif %}{% else %}N/A{% endif %}</p>
+                                </div>
+                                <div class="booking-meta-item">
+                                    <p class="booking-info-label">Contact</p>
+                                    <p class="booking-info-value">{{ booking.get('email', 'N/A') }}</p>
+                                </div>
+                            </div>
+
+                            <div class="booking-card-footer">
+                                <p class="booking-hint">
+                                    {% if is_overdue_arrival %}
+                                        ⚠️ Overdue arrival — check-in date has passed.
+                                    {% elif booking.get('is_today_arrival') %}
+                                        Arrives today.
+                                        {% elif booking.get('days_until_checkin') is not none and booking.get('days_until_checkin') > 0 %}
+                                        Arrives in {{ booking.get('days_until_checkin') }} day{% if booking.get('days_until_checkin') != 1 %}s{% endif %}.
+                                    {% elif booking.get('status') == 'Checked In' %}
+                                        Guest is currently checked in.
+                                    {% elif booking.get('is_today_departure') %}
+                                        Departure scheduled for today.
+                                    {% else %}
+                                        Stay is on schedule.
+                                    {% endif %}
+                                </p>
+
+                                {% if session['role'] == 'admin' %}
+                                    <div class="booking-actions">
+                                        <form action="{{ url_for('checkin') }}" method="post" class="inline-form">
+                                            <input type="hidden" name="booking_id" value="{{ booking.get('id') }}">
+                                            <input type="hidden" name="action" value="checkin">
+                                            <button class="btn btn-primary btn-small" type="submit" {% if booking.get('status') != 'Booked' %}disabled{% endif %}>Check In</button>
+                                        </form>
+
+                                        <form action="{{ url_for('checkin') }}" method="post" class="inline-form">
+                                            <input type="hidden" name="booking_id" value="{{ booking.get('id') }}">
+                                            <input type="hidden" name="action" value="checkout">
+                                            <button class="btn btn-secondary btn-small" type="submit" {% if booking.get('status') != 'Checked In' %}disabled{% endif %}>Check Out</button>
+                                        </form>
+
+                                        {% if is_overdue_arrival %}
+                                            <form action="{{ url_for('mark_no_show', booking_id=booking.get('id')) }}" method="post" class="inline-form" onsubmit="return confirm('Mark this booking as a no-show? The guest never checked in.');">
+                                                <button class="btn btn-outline btn-small" type="submit">Mark No-Show</button>
+                                            </form>
+                                        {% endif %}
+                                    </div>
+                                {% elif booking.get('status') == 'Booked' %}
+                                    <div class="booking-actions">
+                                        <form action="{{ url_for('cancel_booking', booking_id=booking.get('id')) }}" method="post" class="inline-form" onsubmit="return confirm('Cancel this booking?');">
+                                            <button class="btn btn-outline btn-small" type="submit">Cancel Booking</button>
+                                        </form>
+                                    </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <div class="empty-state">
+                    <p>No current or upcoming bookings found.</p>
+                </div>
+            {% endif %}
+
+            {% if past_bookings | length > 0 %}
+                <details class="history-panel">
+                    <summary>Past bookings</summary>
+                    <div class="booking-stack history-stack">
+                        {% for booking in past_bookings %}
+                            <div class="booking-card booking-card-muted">
+                                <div class="booking-card-top">
+                                    <div>
+                                        <h3>{{ booking.get('guest_name', 'N/A') }}</h3>
+                                        <p class="booking-card-subtitle">Room {{ booking.get('room_number', 'N/A') }} • {{ booking.get('room_type', 'N/A') }}</p>
+                                    </div>
+                                    <span class="{{ booking.status_badge.class }}">{{ booking.status_badge.label }}</span>
+                                </div>
+
+                                <div class="booking-meta-grid">
+                                    <div class="booking-meta-item">
+                                        <p class="booking-info-label">Check-in</p>
+                                        <p class="booking-info-value">{{ booking.get('checkin_date', 'N/A') }}</p>
+                                    </div>
+                                    <div class="booking-meta-item">
+                                        <p class="booking-info-label">Check-out</p>
+                                        <p class="booking-info-value">{{ booking.get('checkout_date', 'N/A') }}</p>
+                                    </div>
+                                    <div class="booking-meta-item">
+                                        <p class="booking-info-label">Stay</p>
+                                        <p class="booking-info-value">{% if booking.get('nights') is not none %}{{ booking.get('nights') }} night{% if booking.get('nights') != 1 %}s{% endif %}{% else %}N/A{% endif %}</p>
+                                    </div>
+                                </div>
+                            </div>
+                        {% endfor %}
+                    </div>
+                </details>
+            {% endif %}
+            {% else %}
+                {% if booked_bookings | length == 0 and checkedin_bookings | length == 0 and checkedout_bookings | length == 0 and cancelled_bookings | length == 0 %}
+                    <div class="empty-state">
+                        <p>You have no bookings yet.</p>
+                    </div>
+                {% else %}
+                    {% if booked_bookings | length > 0 %}
+                        <div class="section-heading">
+                            <h2>Booked ({{ booked_bookings | length }})</h2>
+                            <p>Upcoming stays awaiting check-in.</p>
+                        </div>
+                        <div class="booking-stack">
+                            {% for booking in booked_bookings %}
+                                {{ booking_card(booking, show_cancel=True) }}
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+
+                    {% if checkedin_bookings | length > 0 %}
+                        <div class="section-heading">
+                            <h2>Checked In ({{ checkedin_bookings | length }})</h2>
+                            <p>Stays currently in progress.</p>
+                        </div>
+                        <div class="booking-stack">
+                            {% for booking in checkedin_bookings %}
+                                {{ booking_card(booking) }}
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+
+                    {% if checkedout_bookings | length > 0 %}
+                        <details class="history-panel">
+                            <summary>Checked Out ({{ checkedout_bookings | length }})</summary>
+                            <div class="booking-stack history-stack">
+                                {% for booking in checkedout_bookings %}
+                                    {{ booking_card(booking, muted=True) }}
+                                {% endfor %}
+                            </div>
+                        </details>
+                    {% endif %}
+
+                    {% if cancelled_bookings | length > 0 %}
+                        <details class="history-panel">
+                            <summary>Cancelled / No-Show ({{ cancelled_bookings | length }})</summary>
+                            <div class="booking-stack history-stack">
+                                {% for booking in cancelled_bookings %}
+                                    {{ booking_card(booking, muted=True) }}
+                                {% endfor %}
+                            </div>
+                        </details>
+                    {% endif %}
+                {% endif %}
+            {% endif %}
+        </div>
+    </section>
+
+    <script>
+        const navbar = document.querySelector('.navbar');
+        window.addEventListener('scroll', () => {
+            if (window.scrollY > 60) navbar.classList.add('scrolled');
+            else navbar.classList.remove('scrolled');
+        });
+    </script>
+</body>
+</html>

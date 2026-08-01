@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Book Room</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="has-navbar">
+    <nav class="navbar">
+        <div class="navbar-brand">
+            <a href="{% if session["role"] == "admin" %}/admin/dashboard{% else %}/user/dashboard{% endif %}" class="navbar-logo">🏨 Hotel Manager</a>
+        </div>
+        <div class="navbar-right">
+            <span class="navbar-user">{{ session.username }}</span>
+            <a href="/logout" class="navbar-logout">Logout</a>
+        </div>
+    </nav>
+
+    <section style="min-height: calc(100vh - 70px); padding-top: 80px;">
+        <div class="container">
+            <h1>Book Room {{ room.room_number }}</h1>
+            <p class="subtitle">{{ room.type }} — ${{ room.price }} / night</p>
+            <p style="color: var(--gold); font-weight: 600; margin-top: -0.5rem;">
+                {% if tier_earn_multiplier | default(1.0) > 1.0 %}
+                    ⭐ Earn {{ (loyalty_points_per_night | default(0) * tier_earn_multiplier) | round | int }} pts/night
+                    <span style="font-weight: 400; color: var(--text-3);">({{ loyalty_points_per_night | default(0) }} base × {{ tier_earn_multiplier }}x {{ tier_icon }} {{ tier_name }} bonus)</span>
+                {% else %}
+                    ⭐ Earn {{ loyalty_points_per_night | default(0) }} pts/night
+                {% endif %}
+            </p>
+
+            {% if error %}
+                <div class="alert alert-error">{{ error }}</div>
+            {% endif %}
+
+            <form method="post" id="booking-form">
+                <div style="display:flex; gap:1rem; flex-wrap:wrap; max-width:520px;">
+                    <label style="flex:1; min-width:220px;">
+                        Guest First Name
+                        <input type="text" name="guest_first_name" required>
+                    </label>
+                    <label style="flex:1; min-width:220px;">
+                        Guest Last Name
+                        <input type="text" name="guest_last_name" required>
+                    </label>
+                </div>
+
+                <div style="display:flex; gap:1rem; flex-wrap:wrap; max-width:520px; margin-top:1rem;">
+                    <label style="flex:1; min-width:220px;">
+                        Phone Number
+                        <input type="tel" name="phone_number" id="phone_number" required placeholder="Example: 96751234">
+                    </label>
+                    <label style="flex:1; min-width:220px;">
+                        Email
+                        <input type="email" name="email" required>
+                    </label>
+                </div>
+
+                <div style="display:flex; gap:1rem; flex-wrap:wrap; max-width:520px; margin-top:1rem;">
+                    <label style="flex:1; min-width:220px;">
+                        Check-in
+                        <input type="date" name="checkin_date" id="checkin_date" required>
+                    </label>
+                    <label style="flex:1; min-width:220px;">
+                        Check-out
+                        <input type="date" name="checkout_date" id="checkout_date" required>
+                    </label>
+                </div>
+
+                <div style="margin-top:1rem; max-width:520px;">
+                    <label style="display:flex; align-items:center; gap:0.5rem;">
+                        <input type="checkbox" id="use_points_toggle" {% if points_balance | default(0) < minimum_points_redemption | default(100) %}disabled{% endif %}>
+                        Redeem loyalty points <span style="color: var(--text-3);">({{ points_balance | default(0) }} pts available)</span>
+                    </label>
+                    {% if points_balance | default(0) < minimum_points_redemption | default(100) %}
+                        <p style="margin: 0.25rem 0 0; color: var(--text-3); font-size: 0.85rem;">
+                            You'll need at least {{ minimum_points_redemption | default(100) }} pts before you can redeem.
+                        </p>
+                    {% endif %}
+                    <div id="points-input-wrap" style="display:none; margin-top:0.5rem;">
+                        <label>
+                            Points to redeem
+                            <input type="number" name="points_redeemed" id="points_redeemed" min="{{ minimum_points_redemption | default(100) }}" max="{{ points_balance | default(0) }}" value="0" disabled>
+                        </label>
+                        <p style="margin: 0.25rem 0 0; color: var(--text-3); font-size: 0.8rem;">
+                            Every {{ loyalty_points_per_dollar | default(10) }} pts = $1 off · redeem {{ minimum_points_redemption | default(100) }}-{{ points_balance | default(0) }} pts
+                        </p>
+                    </div>
+                </div>
+
+                <div style="margin-top:1rem; max-width:520px; background: var(--sand); border-radius: var(--radius-lg); padding: 1rem;">
+                    <p style="display:flex; justify-content:space-between; margin:0;">
+                        <span>Nights</span>
+                        <span id="nights-display">—</span>
+                    </p>
+                    <p style="display:flex; justify-content:space-between; margin:0.5rem 0 0;">
+                        <span>Room total</span>
+                        <span id="room-total-display">$0.00</span>
+                    </p>
+                    <p id="discount-row" style="display:none; justify-content:space-between; margin:0.5rem 0 0;">
+                        <span>Loyalty discount</span>
+                        <span id="discount-display">-$0.00</span>
+                    </p>
+                    <p style="display:flex; justify-content:space-between; margin:0.5rem 0 0; font-weight:600;">
+                        <span>Total</span>
+                        <span id="final-total-display">$0.00</span>
+                    </p>
+                    <p style="display:flex; justify-content:space-between; margin:0.5rem 0 0; color: var(--gold);">
+                        <span>⭐ Points you'll earn</span>
+                        <span id="points-earned-display">0 pts</span>
+                    </p>
+                </div>
+
+                <div style="margin-top:1rem;">
+                    <button class="btn btn-primary">Confirm Booking</button>
+                    <a href="/rooms" class="btn btn-outline">Cancel</a>
+                </div>
+            </form>
+        </div>
+    </section>
+
+    <script>
+        const today = new Date().toISOString().split('T')[0];
+        const phoneInput = document.getElementById('phone_number');
+        const bookingForm = document.getElementById('booking-form');
+        document.getElementById('checkin_date').min = today;
+        document.getElementById('checkout_date').min = today;
+
+        // ---- Loyalty points redemption preview ----
+        const pricePerNight = {{ room.price | default(0) }};
+        const pointsBalance = {{ points_balance | default(0) }};
+        const pointsPerDollar = {{ loyalty_points_per_dollar | default(10) }};
+        const pointsPerNight = {{ loyalty_points_per_night | default(0) }};
+        const tierEarnMultiplier = {{ tier_earn_multiplier | default(1.0) }};
+        const minimumPointsRedemption = {{ minimum_points_redemption | default(100) }};
+
+        const checkinInput = document.getElementById('checkin_date');
+        const checkoutInput = document.getElementById('checkout_date');
+        const usePointsToggle = document.getElementById('use_points_toggle');
+        const pointsInputWrap = document.getElementById('points-input-wrap');
+        const pointsInput = document.getElementById('points_redeemed');
+        const nightsDisplay = document.getElementById('nights-display');
+        const roomTotalDisplay = document.getElementById('room-total-display');
+        const discountRow = document.getElementById('discount-row');
+        const discountDisplay = document.getElementById('discount-display');
+        const finalTotalDisplay = document.getElementById('final-total-display');
+        const pointsEarnedDisplay = document.getElementById('points-earned-display');
+
+        function getNights() {
+            if (!checkinInput.value || !checkoutInput.value) return 0;
+            const diff = Math.round((new Date(checkoutInput.value) - new Date(checkinInput.value)) / (1000 * 60 * 60 * 24));
+            return diff > 0 ? diff : 0;
+        }
+
+        function updatePriceSummary() {
+            const nights = getNights();
+            const roomTotal = pricePerNight * nights;
+            nightsDisplay.textContent = nights || '—';
+            roomTotalDisplay.textContent = '$' + roomTotal.toFixed(2);
+            pointsEarnedDisplay.textContent = Math.round(nights * pointsPerNight * tierEarnMultiplier) + ' pts';
+
+            let discount = 0;
+            if (usePointsToggle.checked) {
+                let requestedPoints = Math.max(0, Math.min(parseInt(pointsInput.value, 10) || 0, pointsBalance));
+                if (requestedPoints < minimumPointsRedemption) requestedPoints = 0;
+                discount = Math.min(requestedPoints / pointsPerDollar, roomTotal);
+                discountRow.style.display = 'flex';
+                discountDisplay.textContent = '-$' + discount.toFixed(2);
+            } else {
+                discountRow.style.display = 'none';
+            }
+
+            finalTotalDisplay.textContent = '$' + Math.max(0, roomTotal - discount).toFixed(2);
+        }
+
+        usePointsToggle?.addEventListener('change', () => {
+            pointsInputWrap.style.display = usePointsToggle.checked ? 'block' : 'none';
+            pointsInput.disabled = !usePointsToggle.checked;
+            if (!usePointsToggle.checked) pointsInput.value = 0;
+            updatePriceSummary();
+        });
+        pointsInput?.addEventListener('input', updatePriceSummary);
+        checkinInput?.addEventListener('change', updatePriceSummary);
+        checkoutInput?.addEventListener('change', updatePriceSummary);
+        updatePriceSummary();
+
+        function validatePhoneNumber() {
+            const value = phoneInput?.value?.trim() || '';
+            const valid = /^([8-9]\d{7})$/.test(value);
+            if (!valid && value) {
+                alert('Phone number must be exactly 8 digits and start with 8 or 9.');
+                phoneInput?.focus();
+                return false;
+            }
+            return true;
+        }
+
+        function validatePointsRedemption() {
+            if (!usePointsToggle.checked) return true;
+            const requestedPoints = parseInt(pointsInput.value, 10) || 0;
+            if (requestedPoints > 0 && requestedPoints < minimumPointsRedemption) {
+                alert(`You must redeem at least ${minimumPointsRedemption} points, or set it to 0 to skip redemption.`);
+                pointsInput?.focus();
+                return false;
+            }
+            return true;
+        }
+
+        bookingForm?.addEventListener('submit', (event) => {
+            if (!validatePhoneNumber() || !validatePointsRedemption()) {
+                event.preventDefault();
+            }
+        });
+    </script>
+</body>
+</html>

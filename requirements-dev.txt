@@ -1,0 +1,13 @@
+# Dev / CI dependencies. Not installed into the production Docker image.
+# WHY: Keeping pytest (and later ruff) out of the runtime image shrinks the
+# attack surface and the final image size; CI installs this file instead.
+
+-r requirements.txt
+
+colorama==0.4.6
+iniconfig==2.3.0
+packaging==26.2
+pluggy==1.6.0
+Pygments==2.20.0
+pytest==9.1.1
+ruff==0.12.8

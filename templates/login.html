@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - Hotel Management</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="login-container">
+        <div class="login-box">
+            <div class="login-logo">Hotel Manager</div>
+            <p class="login-title">Welcome back</p>
+            
+            {% if error %}
+                <div class="login-error">{{ error }}</div>
+            {% endif %}
+            {% if success %}
+                <div class="login-success" style="background: #e8f5e9; color: #2e7d32; padding: 0.8rem; border-radius: 6px; margin-bottom: 1rem;">{{ success }}</div>
+            {% endif %}
+            
+            <form method="POST">
+                <div class="form-group">
+                    <label for="username">Username</label>
+                    <input 
+                        type="text" 
+                        id="username" 
+                        name="username" 
+                        placeholder="Enter your username"
+                        required
+                    >
+                </div>
+                
+                <div class="form-group">
+                    <label for="password">Password</label>
+                    <input 
+                        type="password" 
+                        id="password" 
+                        name="password" 
+                        placeholder="Enter your password"
+                        required
+                    >
+                </div>
+                
+                <button type="submit" class="btn btn-primary btn-block">Sign In</button>
+            </form>
+
+            <p style="text-align: center; margin-top: 1.5rem; font-size: 14px;">
+                Forgot your password? <a href="#" onclick="document.getElementById('forgot-password-section').style.display = 'block'; return false;" style="color: #4CAF50; text-decoration: none; font-weight: 500;">Reset it here</a>
+            </p>
+            <div id="forgot-password-section" style="display: none; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid #e5e7eb;">
+                <form method="POST">
+                    <div class="form-group" style="margin-bottom: 0.75rem;">
+                        <label for="reset_username">Username</label>
+                        <input type="text" id="reset_username" name="reset_username" placeholder="Enter your username" required>
+                    </div>
+                    <div class="form-group" style="margin-bottom: 0.75rem;">
+                        <label for="new_password">New Password</label>
+                        <input type="password" id="new_password" name="new_password" placeholder="Enter a new password" required>
+                    </div>
+                    <div class="form-group" style="margin-bottom: 0.75rem;">
+                        <label for="confirm_password">Confirm New Password</label>
+                        <input type="password" id="confirm_password" name="confirm_password" placeholder="Confirm new password" required>
+                    </div>
+                    <button type="submit" class="btn btn-outline btn-block">Reset Password</button>
+                </form>
+            </div>
+            
+            <p style="text-align: center; margin-top: 1.5rem; font-size: 14px;">
+                Don't have an account? <a href="/register" style="color: #4CAF50; text-decoration: none; font-weight: 500;">Create one here</a>
+            </p>
+        </div>
+    </div>
+</body>
+</html>

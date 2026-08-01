@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bookings</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="has-navbar">
+    {% macro guest_booking_item(booking) %}
+        <div class="booking-item reveal">
+            <div class="booking-info-group">
+                <p class="booking-info-label">Guest Name</p>
+                <p class="booking-info-value">{{ booking.get('guest_name', 'N/A') }}</p>
+            </div>
+
+            <div class="booking-info-group">
+                <p class="booking-info-label">Room Number</p>
+                <p class="booking-info-value">{{ booking.get('room_number', 'N/A') }}</p>
+            </div>
+
+            <div class="booking-info-group">
+                <p class="booking-info-label">Phone</p>
+                <p class="booking-info-value">{{ booking.get('phone_number', 'N/A') }}</p>
+            </div>
+
+            <div class="booking-info-group">
+                <p class="booking-info-label">Email</p>
+                <p class="booking-info-value">{{ booking.get('email', 'N/A') }}</p>
+            </div>
+
+            <div class="booking-info-group">
+                <p class="booking-info-label">Check-in</p>
+                <p class="booking-info-value">{{ booking.get('checkin_date', 'N/A') }}</p>
+            </div>
+
+            <div class="booking-info-group">
+                <p class="booking-info-label">Check-out</p>
+                <p class="booking-info-value">{{ booking.get('checkout_date', 'N/A') }}</p>
+            </div>
+
+            <div class="booking-info-group">
+                <p class="booking-info-label">Room Type</p>
+                <p class="booking-info-value">{{ booking.get('room_type', 'N/A') }}</p>
+            </div>
+
+            <div class="booking-info-group">
+                <p class="booking-info-label">Total Price</p>
+                <p class="booking-info-value">
+                    ${{ '%.2f' % (booking.get('total_price') if booking.get('total_price') is not none else booking.get('price', 0)) }}
+                    {% if booking.get('points_redeemed') %}
+                        <span style="color: var(--text-3); font-size: 0.85em;">({{ booking.get('points_redeemed') }} pts redeemed, -${{ '%.2f' % booking.get('points_discount', 0) }})</span>
+                    {% endif %}
+                </p>
+            </div>
+
+            <div class="booking-info-group">
+                <p class="booking-info-label">Status</p>
+                <p class="booking-info-value">{{ booking.get('status', 'Booked') }}</p>
+            </div>
+
+            <div class="booking-info-group">
+                <p class="booking-info-label">Booked By</p>
+                <p class="booking-info-value">
+                    {% if booking.get('username') == session.username %}
+                        You
+                    {% else %}
+                        {{ booking.get('username', 'N/A') }}
+                    {% endif %}
+                </p>
+            </div>
+        </div>
+    {% endmacro %}
+
+    <nav class="navbar">
+        <div class="navbar-brand">
+            <a href="{% if session["role"] == "admin" %}/admin/dashboard{% else %}/user/dashboard{% endif %}" class="navbar-logo">🏨 Hotel Manager</a>
+        </div>
+        <div class="navbar-right">
+            <span class="navbar-user">{{ session.username }}</span>
+            <a href="/logout" class="navbar-logout">Logout</a>
+        </div>
+    </nav>
+
+    <div style="padding: 0.75rem 0;">
+        <div style="padding-left: 3cm;">
+            {% if session["role"] == "admin" %}
+                <a href="/admin/dashboard" class="btn btn-gold" style="font-size: 0.85rem; padding: 0.5rem 1rem;">← Back</a>
+            {% else %}
+                <a href="/user/dashboard" class="btn btn-gold" style="font-size: 0.85rem; padding: 0.5rem 1rem;">← Back</a>
+            {% endif %}
+        </div>
+    </div>
+
+    <section class="bookings-list" style="min-height: calc(100vh - 70px); padding-top: 80px;">
+        <div class="container" {% if session["role"] == "admin" %}style="max-width: 1300px;"{% endif %}>
+            <h1 style="margin-bottom: 0.5rem;">{{ 'Archived Bookings' if view_archived else 'Bookings' }}</h1>
+            <p class="subtitle" style="margin-bottom: 0.5rem;">{{ 'Completed stays hidden from the main list' if view_archived else 'View and manage all bookings' }}</p>
+            <p style="color: var(--text-3); margin-bottom: 1rem;">Confirmed bookings cannot be changed once the booking dates are set.</p>
+
+            {% if session["role"] == "admin" %}
+                <div style="text-align: right; margin-bottom: 1rem;">
+                    {% if view_archived %}
+                        <a href="/bookings" class="btn btn-outline btn-small">← Back to Active Bookings</a>
+                    {% else %}
+                        <a href="/bookings?view=archived" class="btn btn-outline btn-small">📦 View Archived ({{ archived_count }})</a>
+                    {% endif %}
+                </div>
+            {% endif %}
+
+            {% if message %}
+                <div class="alert alert-success">
+                    {{ message }}
+                </div>
+            {% endif %}
+
+            {% if session["role"] == "admin" %}
+                <div id="bookings-panel">
+                    <!-- Dashboard Summary Cards -->
+                    <div class="feedback-summary-row bookings-summary-row">
+                        <div class="feedback-summary-card">
+                            <span class="feedback-summary-label">Total Bookings</span>
+                            <span class="feedback-summary-value">{{ stats.total_bookings }}</span>
+                        </div>
+                        <div class="feedback-summary-card">
+                            <span class="feedback-summary-label">Checked In</span>
+                            <span class="feedback-summary-value">{{ stats.checked_in_count }}</span>
+                        </div>
+                        <div class="feedback-summary-card">
+                            <span class="feedback-summary-label">Pending</span>
+                            <span class="feedback-summary-value">{{ stats.pending_count }}</span>
+                        </div>
+                        <div class="feedback-summary-card">
+                            <span class="feedback-summary-label">Checked Out</span>
+                            <span class="feedback-summary-value">{{ stats.checked_out_count }}</span>
+                        </div>
+                        <div class="feedback-summary-card">
+                            <span class="feedback-summary-label">Today's Arrivals</span>
+                            <span class="feedback-summary-value">{{ stats.arrivals_today }}</span>
+                        </div>
+                        <div class="feedback-summary-card">
+                            <span class="feedback-summary-label">Today's Departures</span>
+                            <span class="feedback-summary-value">{{ stats.departures_today }}</span>
+                        </div>
+                    </div>
+
+                    <!-- Search + Filters (server-side; combine and preserve pagination via GET) -->
+                    <form method="GET" action="/bookings" class="feedback-filter-bar bookings-filter-bar">
+                        {% if view_archived %}<input type="hidden" name="view" value="archived">{% endif %}
+                        <div class="feedback-filter-group" style="flex: 1 1 220px;">
+                            <label for="search">Search</label>
+                            <input type="text" id="search" name="search" placeholder="Guest, ID, room, phone, email" value="{{ search }}">
+                        </div>
+                        <div class="feedback-filter-group">
+                            <label for="status">Status</label>
+                            <select id="status" name="status">
+                                <option value="">All</option>
+                                <option value="Booked" {% if status_filter == 'Booked' %}selected{% endif %}>Pending</option>
+                                <option value="Checked In" {% if status_filter == 'Checked In' %}selected{% endif %}>Checked In</option>
+                                <option value="Checked Out" {% if status_filter == 'Checked Out' %}selected{% endif %}>Checked Out</option>
+                                <option value="Cancelled" {% if status_filter == 'Cancelled' %}selected{% endif %}>Cancelled</option>
+                                <option value="No-Show" {% if status_filter == 'No-Show' %}selected{% endif %}>No-Show</option>
+                            </select>
+                        </div>
+                        <div class="feedback-filter-group">
+                            <label for="room_type">Room Type</label>
+                            <select id="room_type" name="room_type">
+                                <option value="">All</option>
+                                {% for rt in room_types %}
+                                    <option value="{{ rt }}" {% if room_type_filter == rt %}selected{% endif %}>{{ rt }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="feedback-filter-group">
+                            <label for="checkin_date">Check-in Date</label>
+                            <input type="date" id="checkin_date" name="checkin_date" value="{{ checkin_filter }}">
+                        </div>
+                        <div class="feedback-filter-group">
+                            <label for="checkout_date">Check-out Date</label>
+                            <input type="date" id="checkout_date" name="checkout_date" value="{{ checkout_filter }}">
+                        </div>
+                        <button type="submit" class="btn btn-primary" style="padding: 0.6rem 1.25rem;">Search</button>
+                        {% if search or status_filter or room_type_filter or checkin_filter or checkout_filter %}
+                            <a href="/bookings{% if view_archived %}?view=archived{% endif %}" class="btn btn-outline" style="padding: 0.6rem 1.25rem;">Clear</a>
+                        {% endif %}
+                        <a href="/bookings/export{% if base_query %}?{{ base_query }}{% endif %}" class="btn btn-gold" style="padding: 0.6rem 1.25rem;">Export CSV</a>
+                        <button type="button" class="btn btn-outline" id="refresh-bookings-btn" style="padding: 0.6rem 1.25rem;">⟳ Refresh</button>
+                    </form>
+
+                    <div style="text-align: right; margin-bottom: 1rem;">
+                        <span style="color: var(--text-3); font-size: 13px;">
+                            {{ total_matching }} matching booking{% if total_matching != 1 %}s{% endif %}
+                        </span>
+                    </div>
+
+                    {% if bookings %}
+                        <div style="background: var(--white); border-radius: var(--radius-lg); box-shadow: var(--shadow-md); overflow-x: auto;">
+                            <table class="feedback-table bookings-table" id="bookings-table">
+                                <thead>
+                                    <tr>
+                                        <th>Booking ID</th>
+                                        <th class="sortable-col" data-sort-type="text">Guest Name <span class="sort-arrow">⇅</span></th>
+                                        <th class="sortable-col" data-sort-type="text">Room Number <span class="sort-arrow">⇅</span></th>
+                                        <th>Room Type</th>
+                                        <th class="sortable-col" data-sort-type="date">Check-In <span class="sort-arrow">⇅</span></th>
+                                        <th class="sortable-col" data-sort-type="date">Check-Out <span class="sort-arrow">⇅</span></th>
+                                        <th>Phone</th>
+                                        <th>Email</th>
+                                        <th class="sortable-col" data-sort-type="text">Status <span class="sort-arrow">⇅</span></th>
+                                        <th>Booked By</th>
+                                        <th>Points</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for booking in bookings %}
+                                        <tr>
+                                            <td>#{{ booking.get('id', 'N/A') }}</td>
+                                            <td>{{ booking.get('guest_name', 'N/A') }}</td>
+                                            <td>{{ booking.get('room_number', 'N/A') }}</td>
+                                            <td>{{ booking.get('room_type', 'N/A') }}</td>
+                                            <td>{{ booking.get('checkin_date', 'N/A') }}</td>
+                                            <td>{{ booking.get('checkout_date', 'N/A') }}</td>
+                                            <td>{{ booking.get('phone_number', 'N/A') }}</td>
+                                            <td>{{ booking.get('email', 'N/A') }}</td>
+                                            <td><span class="{{ booking.status_badge.class }}">{{ booking.status_badge.label }}</span></td>
+                                            <td>{{ booking.get('username', 'N/A') }}</td>
+                                            <td>{{ booking.get('guest_points_balance', 0) }} pts</td>
+                                            <td>
+                                                <div class="bookings-actions">
+                                                    <button
+                                                        type="button"
+                                                        class="btn btn-outline btn-small view-booking-btn"
+                                                        data-id="{{ booking.get('id', 'N/A') }}"
+                                                        data-guest="{{ booking.get('guest_name', 'N/A') }}"
+                                                        data-room="{{ booking.get('room_number', 'N/A') }}"
+                                                        data-room-type="{{ booking.get('room_type', 'N/A') }}"
+                                                        data-checkin="{{ booking.get('checkin_date', 'N/A') }}"
+                                                        data-checkout="{{ booking.get('checkout_date', 'N/A') }}"
+                                                        data-nights="{{ booking.get('nights') if booking.get('nights') is not none else 'N/A' }}"
+                                                        data-phone="{{ booking.get('phone_number', 'N/A') }}"
+                                                        data-email="{{ booking.get('email', 'N/A') }}"
+                                                        data-status="{{ booking.status_badge.label }}"
+                                                        data-booked-by="{{ booking.get('username', 'N/A') }}"
+                                                        data-total-price="${{ '%.2f' % (booking.get('total_price') if booking.get('total_price') is not none else booking.get('price', 0)) }}"
+                                                        data-points-redeemed="{{ booking.get('points_redeemed') or 0 }}"
+                                                        data-points-discount="${{ '%.2f' % booking.get('points_discount', 0) }}"
+                                                    >View</button>
+                                                    <button
+                                                        type="button"
+                                                        class="btn btn-outline btn-small adjust-points-btn"
+                                                        data-username="{{ booking.get('username', '') }}"
+                                                        data-guest="{{ booking.get('guest_name', 'N/A') }}"
+                                                        data-balance="{{ booking.get('guest_points_balance', 0) }}"
+                                                    >Adjust Points</button>
+                                                    {% if (booking.get('status') or 'Booked') == 'Checked In' %}
+                                                        <a href="/admin/bookings/edit/{{ booking.get('id') }}" class="btn btn-outline btn-small">Edit</a>
+                                                    {% else %}
+                                                        <button type="button" class="btn btn-outline btn-small" disabled title="Only checked-in bookings can be edited">Edit</button>
+                                                    {% endif %}
+                                                    {% if view_archived %}
+                                                        <a href="/admin/bookings/unarchive/{{ booking.get('id') }}" class="btn btn-outline btn-small">Unarchive</a>
+                                                    {% elif (booking.get('status') or 'Booked') in ['Checked Out', 'Cancelled', 'No-Show'] %}
+                                                        <a href="/admin/bookings/archive/{{ booking.get('id') }}" class="btn btn-outline btn-small" onclick="return confirm('Archive this booking? It will be hidden from the main list until unarchived.');">Archive</a>
+                                                    {% endif %}
+                                                    <button type="button" class="btn btn-outline btn-small" disabled title="Deleting a single booking isn't supported yet">Delete</button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <!-- Pagination -->
+                        {% if total_pages > 1 %}
+                            <div class="bookings-pagination">
+                                {% if page > 1 %}
+                                    <a href="/bookings?{{ base_query }}{% if base_query %}&{% endif %}page={{ page - 1 }}" class="btn btn-outline btn-small">← Previous</a>
+                                {% else %}
+                                    <button type="button" class="btn btn-outline btn-small" disabled>← Previous</button>
+                                {% endif %}
+
+                                {% for page_number in range(1, total_pages + 1) %}
+                                    {% if page_number == page %}
+                                        <span class="btn btn-primary btn-small bookings-page-current">{{ page_number }}</span>
+                                    {% else %}
+                                        <a href="/bookings?{{ base_query }}{% if base_query %}&{% endif %}page={{ page_number }}" class="btn btn-outline btn-small">{{ page_number }}</a>
+                                    {% endif %}
+                                {% endfor %}
+
+                                {% if page < total_pages %}
+                                    <a href="/bookings?{{ base_query }}{% if base_query %}&{% endif %}page={{ page + 1 }}" class="btn btn-outline btn-small">Next →</a>
+                                {% else %}
+                                    <button type="button" class="btn btn-outline btn-small" disabled>Next →</button>
+                                {% endif %}
+                            </div>
+                        {% endif %}
+                    {% else %}
+                        <div style="text-align: center; padding: 3rem; background: var(--sand); border-radius: var(--radius-lg);">
+                            <p style="font-size: 1.2rem; color: var(--text-2);">No bookings match your search and filters</p>
+                        </div>
+                    {% endif %}
+                </div>
+            {% else %}
+                {% if booked_bookings | length == 0 and checkedin_bookings | length == 0 and checkedout_bookings | length == 0 and cancelled_bookings | length == 0 %}
+                    <div style="text-align: center; padding: 3rem; background: var(--sand); border-radius: var(--radius-lg);">
+                        <p style="font-size: 1.2rem; color: var(--text-2);">No bookings found</p>
+                    </div>
+                {% else %}
+                    {% if booked_bookings | length > 0 %}
+                        <div class="section-heading">
+                            <h2>Booked ({{ booked_bookings | length }})</h2>
+                        </div>
+                        <div style="background: var(--white); margin-bottom: 1.5rem;">
+                            {% for booking in booked_bookings %}
+                                {{ guest_booking_item(booking) }}
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+
+                    {% if checkedin_bookings | length > 0 %}
+                        <div class="section-heading">
+                            <h2>Checked In ({{ checkedin_bookings | length }})</h2>
+                        </div>
+                        <div style="background: var(--white); margin-bottom: 1.5rem;">
+                            {% for booking in checkedin_bookings %}
+                                {{ guest_booking_item(booking) }}
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+
+                    {% if checkedout_bookings | length > 0 %}
+                        <details class="history-panel">
+                            <summary>Checked Out ({{ checkedout_bookings | length }})</summary>
+                            <div style="background: var(--white);">
+                                {% for booking in checkedout_bookings %}
+                                    {{ guest_booking_item(booking) }}
+                                {% endfor %}
+                            </div>
+                        </details>
+                    {% endif %}
+
+                    {% if cancelled_bookings | length > 0 %}
+                        <details class="history-panel">
+                            <summary>Cancelled / No-Show ({{ cancelled_bookings | length }})</summary>
+                            <div style="background: var(--white);">
+                                {% for booking in cancelled_bookings %}
+                                    {{ guest_booking_item(booking) }}
+                                {% endfor %}
+                            </div>
+                        </details>
+                    {% endif %}
+                {% endif %}
+            {% endif %}
+        </div>
+    </section>
+
+    {% if session["role"] == "admin" %}
+        <!-- View booking details modal (populated client-side from the row's data-* attributes; no extra request needed) -->
+        <div id="view-booking-modal" class="request-modal" style="display: none;">
+            <div class="request-modal-backdrop"></div>
+            <div class="request-modal-dialog">
+                <div class="request-modal-header">
+                    <h3 id="view-modal-title">Booking Details</h3>
+                    <button type="button" class="request-modal-close" id="close-view-modal">Close</button>
+                </div>
+                <div class="request-modal-body" id="view-modal-body"></div>
+            </div>
+        </div>
+
+        <!-- Adjust loyalty points modal -->
+        <div id="adjust-points-modal" class="request-modal" style="display: none;">
+            <div class="request-modal-backdrop"></div>
+            <div class="request-modal-dialog">
+                <div class="request-modal-header">
+                    <h3>Adjust Loyalty Points</h3>
+                    <button type="button" class="request-modal-close" id="close-adjust-modal">Close</button>
+                </div>
+                <div class="request-modal-body">
+                    <p style="margin: 0 0 0.6rem 0;"><strong>Guest:</strong> <span id="adjust-guest-label"></span></p>
+                    <p style="margin: 0 0 1rem 0;"><strong>Current balance:</strong> <span id="adjust-balance-label"></span> pts</p>
+                    <form method="post" action="/admin/points/adjust">
+                        <input type="hidden" name="username" id="adjust-username-input">
+                        <label style="display:block; margin-bottom:0.75rem;">
+                            Points (use a negative number to deduct)
+                            <input type="number" name="points" required style="width:100%;">
+                        </label>
+                        <label style="display:block; margin-bottom:0.75rem;">
+                            Reason
+                            <textarea name="reason" required style="width:100%;" rows="3"></textarea>
+                        </label>
+                        <button type="submit" class="btn btn-primary">Apply Adjustment</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    {% endif %}
+
+    <script>
+        const navbar = document.querySelector('.navbar');
+        window.addEventListener('scroll', () => {
+            if (window.scrollY > 60) navbar.classList.add('scrolled');
+            else navbar.classList.remove('scrolled');
+        });
+
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.classList.add('visible');
+                }
+            });
+        }, { threshold: 0.1 });
+
+        document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+
+        {% if session["role"] == "admin" %}
+        // ---- View booking modal ----
+        const viewModal = document.getElementById('view-booking-modal');
+        const viewModalBody = document.getElementById('view-modal-body');
+
+        function openViewModal(button) {
+            const rows = [
+                ['Booking ID', '#' + button.dataset.id],
+                ['Guest Name', button.dataset.guest],
+                ['Room Number', button.dataset.room],
+                ['Room Type', button.dataset.roomType],
+                ['Check-In Date', button.dataset.checkin],
+                ['Check-Out Date', button.dataset.checkout],
+                ['Nights', button.dataset.nights],
+                ['Phone', button.dataset.phone],
+                ['Email', button.dataset.email],
+                ['Status', button.dataset.status],
+                ['Booked By', button.dataset.bookedBy],
+                ['Total Price', button.dataset.totalPrice],
+            ];
+            if (parseInt(button.dataset.pointsRedeemed, 10) > 0) {
+                rows.push(['Loyalty Points Redeemed', button.dataset.pointsRedeemed + ' pts (-' + button.dataset.pointsDiscount + ')']);
+            }
+            viewModalBody.innerHTML = rows.map(([label, value]) =>
+                '<p style="margin: 0 0 0.6rem 0;"><strong>' + label + ':</strong> ' + value + '</p>'
+            ).join('');
+            viewModal.style.display = 'flex';
+        }
+
+        // ---- Adjust points modal ----
+        const adjustModal = document.getElementById('adjust-points-modal');
+        const adjustGuestLabel = document.getElementById('adjust-guest-label');
+        const adjustBalanceLabel = document.getElementById('adjust-balance-label');
+        const adjustUsernameInput = document.getElementById('adjust-username-input');
+
+        function openAdjustModal(button) {
+            adjustGuestLabel.textContent = button.dataset.guest;
+            adjustBalanceLabel.textContent = button.dataset.balance;
+            adjustUsernameInput.value = button.dataset.username;
+            adjustModal.style.display = 'flex';
+        }
+
+        function sortTableByHeader(header) {
+            const table = header.closest('table');
+            const tbody = table.querySelector('tbody');
+            const cellIndex = Array.from(header.parentNode.children).indexOf(header);
+            const sortType = header.dataset.sortType;
+            const ascending = header.dataset.sortDir !== 'asc';
+            header.dataset.sortDir = ascending ? 'asc' : 'desc';
+
+            const rows = Array.from(tbody.querySelectorAll('tr'));
+            rows.sort((rowA, rowB) => {
+                const textA = rowA.children[cellIndex].innerText.trim();
+                const textB = rowB.children[cellIndex].innerText.trim();
+                const comparison = sortType === 'date'
+                    ? new Date(textA) - new Date(textB)
+                    : textA.localeCompare(textB);
+                return ascending ? comparison : -comparison;
+            });
+            rows.forEach((row) => tbody.appendChild(row));
+        }
+
+        // ---- Refresh button: re-fetch the current filtered URL and swap in
+        // just the bookings panel, without a full browser page reload ----
+        async function refreshBookingsPanel(button) {
+            const originalText = button.textContent;
+            button.textContent = 'Refreshing…';
+            button.disabled = true;
+            try {
+                const response = await fetch(window.location.href, { headers: { 'X-Requested-With': 'fetch' } });
+                const html = await response.text();
+                const parsed = new DOMParser().parseFromString(html, 'text/html');
+                const freshPanel = parsed.getElementById('bookings-panel');
+                const currentPanel = document.getElementById('bookings-panel');
+                if (freshPanel && currentPanel) {
+                    currentPanel.innerHTML = freshPanel.innerHTML;
+                }
+            } catch (error) {
+                window.location.reload();
+            } finally {
+                button.textContent = originalText;
+                button.disabled = false;
+            }
+        }
+
+        // A single delegated listener on document handles every dynamic
+        // control (view/sort/refresh), so it keeps working even after
+        // Refresh replaces #bookings-panel's contents with fresh HTML —
+        // listeners attached directly to those elements would be lost then.
+        document.addEventListener('click', async (event) => {
+            const viewBtn = event.target.closest('.view-booking-btn');
+            if (viewBtn) {
+                openViewModal(viewBtn);
+                return;
+            }
+
+            if (event.target.id === 'close-view-modal') {
+                viewModal.style.display = 'none';
+                return;
+            }
+
+            const adjustBtn = event.target.closest('.adjust-points-btn');
+            if (adjustBtn) {
+                openAdjustModal(adjustBtn);
+                return;
+            }
+
+            if (event.target.id === 'close-adjust-modal') {
+                adjustModal.style.display = 'none';
+                return;
+            }
+
+            if (event.target.classList.contains('request-modal-backdrop')) {
+                event.target.closest('.request-modal').style.display = 'none';
+                return;
+            }
+
+            const sortHeader = event.target.closest('th.sortable-col');
+            if (sortHeader) {
+                sortTableByHeader(sortHeader);
+                return;
+            }
+
+            const refreshBtn = event.target.closest('#refresh-bookings-btn');
+            if (refreshBtn) {
+                await refreshBookingsPanel(refreshBtn);
+            }
+        });
+        {% endif %}
+    </script>
+</body>
+</html>

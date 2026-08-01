@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Add Room - Hotel Management</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="has-navbar add-room-page">
+    <!-- NAVIGATION -->
+    <nav class="navbar">
+        <div class="navbar-brand">
+            <a href="/admin/dashboard" class="navbar-logo">🏨 Hotel Manager</a>
+        </div>
+        <div class="navbar-right">
+            <span class="navbar-user">{{ session.username }}</span>
+            <a href="/logout" class="navbar-logout">Logout</a>
+        </div>
+    </nav>
+
+    <div class="add-room-back">
+        <a href="/rooms" class="btn btn-gold btn-small">← Back</a>
+    </div>
+
+    <main class="add-room-container">
+        <section class="add-room-hero">
+            <div class="container">
+                <div class="add-room-header">
+                    <span class="tag">Room Management</span>
+                    <h1>Add New Room</h1>
+                    <p class="subtitle">Enter a room number from 1 to 50. Its room type and price will be filled in automatically, then choose its availability status.</p>
+                </div>
+
+                <div class="add-room-layout">
+                    <div class="add-room-card reveal visible">
+                        <div class="add-room-card-header">
+                            <div>
+                                <span class="tag">Room Details</span>
+                                <h2>New Accommodation</h2>
+                            </div>
+                            <div class="add-room-icon">🛏️</div>
+                        </div>
+
+                        {% if error %}
+                            <div class="login-error">{{ error }}</div>
+                        {% endif %}
+
+                        <form method="POST" class="add-room-form" id="addRoomForm" novalidate>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="room_number">Room Number</label>
+                                    <input
+                                        type="text"
+                                        id="room_number"
+                                        name="room_number"
+                                        value="{{ entered_room_number|default('') }}"
+                                        placeholder="Enter 1 to 50"
+                                        inputmode="numeric"
+                                        pattern="[0-9]*"
+                                        maxlength="2"
+                                        autocomplete="off"
+                                        required
+                                    >
+                                    <p class="field-error" id="roomNumberError" aria-live="polite"></p>
+                                </div>
+
+                                <div class="form-group">
+                                    <label for="type_display">Room Type</label>
+                                    <select id="type_display" disabled aria-label="Automatically selected room type">
+                                        <option value="">Automatically selected</option>
+                                        <option value="Single">Single</option>
+                                        <option value="Double">Double</option>
+                                        <option value="Suite">Suite</option>
+                                    </select>
+                                    <input type="hidden" id="type" name="type" value="">
+                                </div>
+                            </div>
+
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="price">Price Per Night</label>
+                                    <input type="text" id="price" name="price" placeholder="Automatically selected" readonly required>
+                                </div>
+
+                                <div class="form-group">
+                                    <label for="status_display">Availability Status</label>
+                                    <select id="status_display" name="status" disabled required aria-label="Availability status">
+                                        <option value="">Select status</option>
+                                        <option value="Available" {% if entered_status|default('Available') == 'Available' %}selected{% endif %}>Available</option>
+                                        <option value="Booked" {% if entered_status|default('Available') == 'Booked' %}selected{% endif %}>Booked</option>
+                                        <option value="Maintenance" {% if entered_status|default('Available') == 'Maintenance' %}selected{% endif %}>Maintenance</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div class="add-room-actions">
+                                <a href="/rooms" class="btn btn-outline">Cancel</a>
+                                <button type="submit" class="btn btn-gold" id="addRoomButton" disabled>+ Add Room</button>
+                            </div>
+                        </form>
+                    </div>
+
+                    <aside class="add-room-preview reveal visible">
+                        <div class="preview-image preview-image-empty" id="previewImage">
+                            <img id="previewRoomPhoto" src="" alt="" hidden>
+                        </div>
+                        <div class="preview-body">
+                            <p class="card-meta">Preview</p>
+                            <h3 class="card-title">Room Listing</h3>
+                            <p class="card-text">The matching room photo and details will appear here after a valid unused room number is entered.</p>
+                            <div class="room-features">
+                                <span class="room-feature" id="previewRoomNumber">Room Number</span>
+                                <span class="room-feature" id="previewRoomType">Room Type</span>
+                                <span class="room-feature" id="previewStatus">Status</span>
+                            </div>
+                        </div>
+                    </aside>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <script>
+        const navbar = document.querySelector('.navbar');
+        window.addEventListener('scroll', () => {
+            if (window.scrollY > 60) navbar.classList.add('scrolled');
+            else navbar.classList.remove('scrolled');
+        });
+
+        const existingRoomNumbers = new Set({{ existing_room_numbers|default([])|tojson }});
+        const roomImages = {
+            Single: [
+                '/static/images/rooms/single-room-1.png',
+                '/static/images/rooms/single-room-2.png'
+            ],
+            Double: [
+                '/static/images/rooms/double-room-1.png',
+                '/static/images/rooms/double-room-2.png'
+            ],
+            Suite: [
+                '/static/images/rooms/suite-room-1.png',
+                '/static/images/rooms/suite-room-2.png'
+            ]
+        };
+
+        const roomNumberInput = document.getElementById('room_number');
+        const roomNumberError = document.getElementById('roomNumberError');
+        const typeDisplay = document.getElementById('type_display');
+        const typeInput = document.getElementById('type');
+        const priceInput = document.getElementById('price');
+        const statusDisplay = document.getElementById('status_display');
+        const allowedStatuses = new Set(['Available', 'Booked', 'Maintenance']);
+        const addRoomButton = document.getElementById('addRoomButton');
+        const previewImage = document.getElementById('previewImage');
+        const previewRoomPhoto = document.getElementById('previewRoomPhoto');
+        const previewRoomNumber = document.getElementById('previewRoomNumber');
+        const previewRoomType = document.getElementById('previewRoomType');
+        const previewStatus = document.getElementById('previewStatus');
+
+        function resetAutomaticFields() {
+            typeDisplay.value = '';
+            typeInput.value = '';
+            priceInput.value = '';
+            statusDisplay.value = '';
+            statusDisplay.disabled = true;
+            addRoomButton.disabled = true;
+
+            previewRoomPhoto.hidden = true;
+            previewRoomPhoto.removeAttribute('src');
+            previewRoomPhoto.alt = '';
+            previewImage.classList.add('preview-image-empty');
+            previewRoomNumber.textContent = 'Room Number';
+            previewRoomType.textContent = 'Room Type';
+            previewStatus.textContent = 'Status';
+        }
+
+        function showRoomNumberError(message) {
+            roomNumberError.textContent = message;
+            roomNumberInput.classList.toggle('input-error', Boolean(message));
+        }
+
+        function getRoomDetails(number) {
+            if (number >= 41 && number <= 50) {
+                return { type: 'Suite', price: 500 };
+            }
+            if (number >= 1 && number <= 40 && number % 2 === 0) {
+                return { type: 'Single', price: 100 };
+            }
+            if (number >= 1 && number <= 40 && number % 2 === 1) {
+                return { type: 'Double', price: 200 };
+            }
+            return null;
+        }
+
+        function getRoomImage(roomType, roomNumber) {
+            let categoryIndex = 0;
+
+            if (roomType === 'Single') {
+                categoryIndex = (roomNumber / 2) - 1;
+            } else if (roomType === 'Double') {
+                categoryIndex = (roomNumber - 1) / 2;
+            } else if (roomType === 'Suite') {
+                categoryIndex = roomNumber - 41;
+            }
+
+            const imagePool = roomImages[roomType];
+            return imagePool[categoryIndex % imagePool.length];
+        }
+
+        function updateRoomDetails() {
+            // Keep the administrator's chosen status while validating the room number.
+            const selectedStatus = allowedStatuses.has(statusDisplay.value)
+                ? statusDisplay.value
+                : 'Available';
+
+            // Remove letters, symbols and spaces immediately. Only two digits are kept.
+            roomNumberInput.value = roomNumberInput.value.replace(/\D/g, '');
+            showRoomNumberError('');
+            resetAutomaticFields();
+
+            if (roomNumberInput.value === '') {
+                return;
+            }
+
+            const roomNumber = Number(roomNumberInput.value);
+            if (!Number.isInteger(roomNumber) || roomNumber < 1 || roomNumber > 50) {
+                showRoomNumberError('Please enter a room number from 1 to 50.');
+                return;
+            }
+
+            if (existingRoomNumbers.has(roomNumber)) {
+                showRoomNumberError(`Room ${roomNumber} already exists. Please choose another room number.`);
+                return;
+            }
+
+            const details = getRoomDetails(roomNumber);
+            if (!details) {
+                showRoomNumberError('Please enter a valid room number from 1 to 50.');
+                return;
+            }
+
+            typeDisplay.value = details.type;
+            typeInput.value = details.type;
+            priceInput.value = `$${details.price}`;
+            statusDisplay.disabled = false;
+            statusDisplay.value = selectedStatus;
+            addRoomButton.disabled = false;
+
+            previewRoomPhoto.src = getRoomImage(details.type, roomNumber);
+            previewRoomPhoto.alt = `${details.type} room preview`;
+            previewRoomPhoto.hidden = false;
+            previewImage.classList.remove('preview-image-empty');
+            previewRoomNumber.textContent = `Room #${roomNumber}`;
+            previewRoomType.textContent = details.type;
+            previewStatus.textContent = statusDisplay.value;
+        }
+
+        function updatePreviewStatus() {
+            if (!statusDisplay.disabled && allowedStatuses.has(statusDisplay.value)) {
+                previewStatus.textContent = statusDisplay.value;
+            }
+        }
+
+        roomNumberInput.addEventListener('input', updateRoomDetails);
+        statusDisplay.addEventListener('change', updatePreviewStatus);
+        document.getElementById('addRoomForm').addEventListener('submit', (event) => {
+            updateRoomDetails();
+            if (addRoomButton.disabled) {
+                event.preventDefault();
+            }
+        });
+
+        updateRoomDetails();
+    </script>
+</body>
+</html>

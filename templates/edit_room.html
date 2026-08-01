@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Edit Room</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="has-navbar">
+    <nav class="navbar">
+        <div class="navbar-brand">
+            <a href="/admin/dashboard" class="navbar-logo">🏨 Hotel Manager</a>
+        </div>
+        <div class="navbar-right">
+            <span class="navbar-user">{{ session.username }}</span>
+            <a href="/logout" class="navbar-logout">Logout</a>
+        </div>
+    </nav>
+
+    <section style="background: var(--sand); min-height: calc(100vh - 70px);">
+        <div class="container" style="max-width: 600px; padding: 80px 3rem;">
+            <h1 style="margin-bottom: 2rem;">Edit Room</h1>
+
+            {% if error %}
+                <div class="login-error">{{ error }}</div>
+            {% endif %}
+
+            <form method="POST" id="editRoomForm" class="form-container" style="background: var(--white); padding: 2rem; border-radius: var(--radius-lg); box-shadow: var(--shadow-md);">
+                <div class="form-group">
+                    <label for="room_number">Room Number</label>
+                    <input type="text" id="room_number" name="room_number" value="{{ room.room_number }}" inputmode="numeric" pattern="[0-9]*" maxlength="2" required>
+                    <p class="field-help">1–40: even = Single, odd = Double. 41–50 = Suite.</p>
+                    <p class="field-error" id="editRoomNumberError" aria-live="polite"></p>
+                </div>
+
+                <div class="form-group">
+                    <label for="type_display">Room Type</label>
+                    <input type="text" id="type_display" value="{{ room.type }}" readonly>
+                </div>
+
+                <div class="form-group">
+                    <label for="price_display">Price per Night</label>
+                    <input type="text" id="price_display" value="${{ room.price }}" readonly>
+                </div>
+
+                <div class="form-group">
+                    <label for="status">Status</label>
+                    <select id="status" name="status" required>
+                        <option value="Available" {% if room.status == 'Available' %}selected{% endif %}>Available</option>
+                        <option value="Booked" {% if room.status == 'Booked' %}selected{% endif %}>Booked</option>
+                        <option value="Maintenance" {% if room.status == 'Maintenance' %}selected{% endif %}>Maintenance</option>
+                    </select>
+                </div>
+
+                <div style="display: flex; gap: 1rem; margin-top: 2rem;">
+                    <button type="submit" id="updateRoomButton" class="btn btn-primary" style="flex: 1;">Update Room</button>
+                    <a href="/rooms" class="btn btn-outline" style="flex: 1; text-align: center;">Cancel</a>
+                </div>
+            </form>
+        </div>
+    </section>
+
+    <script>
+        const navbar = document.querySelector('.navbar');
+        window.addEventListener('scroll', () => {
+            if (window.scrollY > 60) navbar.classList.add('scrolled');
+            else navbar.classList.remove('scrolled');
+        });
+
+        const existingRoomNumbers = new Set({{ existing_room_numbers|default([])|tojson }});
+        const roomNumberInput = document.getElementById('room_number');
+        const roomNumberError = document.getElementById('editRoomNumberError');
+        const typeDisplay = document.getElementById('type_display');
+        const priceDisplay = document.getElementById('price_display');
+        const updateButton = document.getElementById('updateRoomButton');
+
+        function deriveDetails(number) {
+            if (number >= 41 && number <= 50) return { type: 'Suite', price: 500 };
+            if (number >= 1 && number <= 40 && number % 2 === 0) return { type: 'Single', price: 100 };
+            if (number >= 1 && number <= 40 && number % 2 === 1) return { type: 'Double', price: 200 };
+            return null;
+        }
+
+        function validateRoomNumber() {
+            roomNumberInput.value = roomNumberInput.value.replace(/\D/g, '');
+            roomNumberError.textContent = '';
+            roomNumberInput.classList.remove('input-error');
+            updateButton.disabled = true;
+
+            const number = Number(roomNumberInput.value);
+            const details = deriveDetails(number);
+            if (!roomNumberInput.value || !details) {
+                typeDisplay.value = '';
+                priceDisplay.value = '';
+                roomNumberError.textContent = 'Please enter a room number from 1 to 50.';
+                roomNumberInput.classList.add('input-error');
+                return;
+            }
+
+            if (existingRoomNumbers.has(number)) {
+                typeDisplay.value = '';
+                priceDisplay.value = '';
+                roomNumberError.textContent = `Room ${number} already exists. Please choose another room number.`;
+                roomNumberInput.classList.add('input-error');
+                return;
+            }
+
+            typeDisplay.value = details.type;
+            priceDisplay.value = `$${details.price}`;
+            updateButton.disabled = false;
+        }
+
+        roomNumberInput.addEventListener('input', validateRoomNumber);
+        document.getElementById('editRoomForm').addEventListener('submit', (event) => {
+            validateRoomNumber();
+            if (updateButton.disabled) event.preventDefault();
+        });
+        validateRoomNumber();
+    </script>
+</body>
+</html>

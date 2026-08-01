@@ -1,0 +1,545 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Requests</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="has-navbar">
+    <nav class="navbar">
+        <div class="navbar-brand">
+            <a href="{% if session["role"] == "admin" %}/admin/dashboard{% else %}/user/dashboard{% endif %}" class="navbar-logo">🏨 Hotel Manager</a>
+        </div>
+        <div class="navbar-right">
+            <span class="navbar-user">{{ session.username }}</span>
+            <a href="/logout" class="navbar-logout">Logout</a>
+        </div>
+    </nav>
+
+    <div style="background: var(--sand); padding: 0.75rem 0;">
+        <div style="padding-left: 3cm;">
+            {% if session["role"] == "admin" %}
+                <a href="/admin/dashboard" class="btn btn-gold" style="font-size: 0.85rem; padding: 0.5rem 1rem;">← Back</a>
+            {% else %}
+                <a href="/user/dashboard" class="btn btn-gold" style="font-size: 0.85rem; padding: 0.5rem 1rem;">← Back</a>
+            {% endif %}
+        </div>
+    </div>
+
+    <section style="background: var(--sand); min-height: calc(100vh - 70px); padding-top: 80px;">
+        <div class="container" style="max-width: 700px;">
+            <h1 style="margin-bottom: 0.5rem;">Special Requests</h1>
+            <p class="subtitle" style="margin-bottom: 2rem;">
+                {% if session["role"] == "admin" %}
+                    Review and manage guest requests
+                {% else %}
+                    Submit your special requests for your stay
+                {% endif %}
+            </p>
+
+            <!-- Receipt for the request just submitted -->
+            {% if receipt_request %}
+                <div style="background: var(--white); padding: 2rem; border-radius: var(--radius-lg); box-shadow: var(--shadow-md); margin-bottom: 2rem; text-align: center; border: 2px dashed var(--gold);">
+                    <p style="color: var(--text-3); font-size: 12px; letter-spacing: 0.05em; text-transform: uppercase; margin-bottom: 0.5rem;">Request Received</p>
+                    <div style="font-size: 3rem; font-weight: 700; color: var(--text); margin-bottom: 0.5rem;">{{ receipt_request.get('queue_ticket') or '—' }}</div>
+                    <p style="color: var(--text-3); font-size: 13px; margin-bottom: 1.5rem;">
+                        {{ receipt_request.get('category', '') }} &nbsp;•&nbsp; Room {{ receipt_request.get('room_number', '') }} &nbsp;•&nbsp; {{ receipt_request.get('guest_name', '') }}
+                    </p>
+
+                    <div style="text-align: left; background: var(--sand); border-radius: var(--radius-md); padding: 1rem 1.25rem; margin-bottom: 1.5rem;">
+                        {% for item in receipt_request.get('line_items', []) %}
+                            <p style="color: var(--text); font-size: 14px; margin: 0 0 0.35rem 0;">{{ item }}</p>
+                        {% endfor %}
+                    </div>
+
+                    {% if receipt_request.get('submitted_at_display') %}
+                        <p style="color: var(--text-3); font-size: 12px; margin-bottom: 0.5rem;"><strong>Submitted:</strong> {{ receipt_request.submitted_at_display }}</p>
+                    {% endif %}
+                    <p style="color: var(--text-3); font-size: 12px; margin-bottom: 1.25rem;">
+                        {% if receipt_request.get('estimated_time_remaining') %}<strong>Estimated Time:</strong> {{ receipt_request.estimated_time_remaining }}{% endif %}
+                        {% if receipt_request.get('expected_arrival') %} &nbsp;•&nbsp; <strong>Expected Arrival:</strong> {{ receipt_request.expected_arrival }}{% endif %}
+                    </p>
+
+                    <p style="margin-bottom: 1.5rem;">
+                        <span style="padding: 0.25rem 0.75rem; border-radius: 20px; font-size: 12px; background: {% if receipt_request.status == 'Accepted' %}#d4edda{% elif receipt_request.status == 'Cancelled' %}#f8d7da{% else %}#fff3cd{% endif %}; color: {% if receipt_request.status == 'Accepted' %}#155724{% elif receipt_request.status == 'Cancelled' %}#721c24{% else %}#856404{% endif %};">
+                            {{ receipt_request.status }}
+                        </span>
+                    </p>
+
+                    <a href="/requests" class="btn btn-outline" style="padding: 0.5rem 1.5rem; font-size: 13px;">Dismiss</a>
+                </div>
+            {% endif %}
+
+            <!-- Request Form (only for users) -->
+            {% if session["role"] != "admin" %}
+            {% if room_options %}
+            {% if error %}
+            <div class="login-error" style="margin-bottom: 1rem;">{{ error }}</div>
+            {% endif %}
+            <div id="quantity-validation-error" class="login-error" style="display: none; margin-bottom: 1rem;"></div>
+            <form id="special-request-form" method="POST" novalidate style="background: var(--white); padding: 2rem; border-radius: var(--radius-lg); box-shadow: var(--shadow-md); margin-bottom: 2rem;">
+                <div class="form-group">
+                    <label for="room_number">Room Reference (checked-in room only)</label>
+                    <select id="room_number" name="room_number" required>
+                        <option value="">Select your checked-in room</option>
+                        {% for option in room_options %}
+                            <option value="{{ option.value }}">{{ option.label }}</option>
+                        {% endfor %}
+                    </select>
+                    <p style="font-size: 0.85rem; color: #6b7280; margin-top: 0.5rem;">Requests are available after admin check-in. Guest name is taken automatically from the checked-in booking.</p>
+                </div>
+                <div class="form-group">
+                    <label for="request_type">Request Type</label>
+                    <select id="request_type" name="request_type" required>
+                        <option value="">Choose a request category</option>
+                        <option value="Toiletries" {% if request.form.get('request_type') == 'Toiletries' %}selected{% endif %}>Toiletries</option>
+                        <option value="Food & Beverage" {% if request.form.get('request_type') == 'Food & Beverage' %}selected{% endif %}>Food & Beverage</option>
+                        <option value="Repair" {% if request.form.get('request_type') == 'Repair' %}selected{% endif %}>Repair</option>
+                        <option value="Other" {% if request.form.get('request_type') == 'Other' %}selected{% endif %}>Other</option>
+                    </select>
+                </div>
+
+                <div id="request-modal" class="request-modal" style="display: none;">
+                    <div class="request-modal-backdrop"></div>
+                    <div class="request-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="request-modal-title">
+                        <div class="request-modal-header">
+                            <h3 id="request-modal-title">Request Details</h3>
+                            <button type="button" class="request-modal-close" id="close-request-modal">Close</button>
+                        </div>
+                        <div class="request-modal-body">
+                <div id="toiletries-panel" class="request-panel" style="display: none;">
+                    <label class="request-panel-title">Toiletries</label>
+                    <div class="request-option-grid">
+                        <div class="request-option-card">
+                            <label for="toiletry_toothbrush">Toothbrush</label>
+                            <input type="number" id="toiletry_toothbrush" name="toiletry_toothbrush" min="0" max="5" value="0">
+                        </div>
+                        <div class="request-option-card">
+                            <label for="toiletry_toothpaste">Toothpaste</label>
+                            <input type="number" id="toiletry_toothpaste" name="toiletry_toothpaste" min="0" max="5" value="0">
+                        </div>
+                        <div class="request-option-card">
+                            <label for="toiletry_shampoo">Shampoo</label>
+                            <input type="number" id="toiletry_shampoo" name="toiletry_shampoo" min="0" max="5" value="0">
+                        </div>
+                        <div class="request-option-card">
+                            <label for="toiletry_conditioner">Conditioner</label>
+                            <input type="number" id="toiletry_conditioner" name="toiletry_conditioner" min="0" max="5" value="0">
+                        </div>
+                        <div class="request-option-card">
+                            <label for="toiletry_soap">Soap</label>
+                            <input type="number" id="toiletry_soap" name="toiletry_soap" min="0" max="5" value="0">
+                        </div>
+                        <div class="request-option-card">
+                            <label for="toiletry_bodywash">Body Wash</label>
+                            <input type="number" id="toiletry_bodywash" name="toiletry_bodywash" min="0" max="5" value="0">
+                        </div>
+                        <div class="request-option-card">
+                            <label for="toiletry_razor">Razor</label>
+                            <input type="number" id="toiletry_razor" name="toiletry_razor" min="0" max="5" value="0">
+                        </div>
+                        <div class="request-option-card">
+                            <label for="toiletry_shavingcream">Shaving Cream</label>
+                            <input type="number" id="toiletry_shavingcream" name="toiletry_shavingcream" min="0" max="5" value="0">
+                        </div>
+                        <div class="request-option-card">
+                            <label for="toiletry_cottonbuds">Cotton Buds</label>
+                            <input type="number" id="toiletry_cottonbuds" name="toiletry_cottonbuds" min="0" max="5" value="0">
+                        </div>
+                        <div class="request-option-card">
+                            <label for="toiletry_comb">Comb</label>
+                            <input type="number" id="toiletry_comb" name="toiletry_comb" min="0" max="5" value="0">
+                        </div>
+                        <div class="request-option-card">
+                            <label for="toiletry_showercap">Shower Cap</label>
+                            <input type="number" id="toiletry_showercap" name="toiletry_showercap" min="0" max="5" value="0">
+                        </div>
+                        <div class="request-option-card">
+                            <label for="toiletry_bodylotion">Body Lotion</label>
+                            <input type="number" id="toiletry_bodylotion" name="toiletry_bodylotion" min="0" max="5" value="0">
+                        </div>
+                        <div class="request-option-card">
+                            <label for="toiletry_deodorant">Deodorant</label>
+                            <input type="number" id="toiletry_deodorant" name="toiletry_deodorant" min="0" max="5" value="0">
+                        </div>
+                        <div class="request-option-card">
+                            <label for="toiletry_mouthwash">Mouthwash</label>
+                            <input type="number" id="toiletry_mouthwash" name="toiletry_mouthwash" min="0" max="5" value="0">
+                        </div>
+                        <div class="request-option-card">
+                            <label for="toiletry_bathrobe">Bathrobe</label>
+                            <input type="number" id="toiletry_bathrobe" name="toiletry_bathrobe" min="0" max="5" value="0">
+                        </div>
+                        <div class="request-option-card">
+                            <label for="toiletry_slippers">Slippers</label>
+                            <input type="number" id="toiletry_slippers" name="toiletry_slippers" min="0" max="5" value="0">
+                        </div>
+                    </div>
+                    <p class="request-help">Choose any toiletries and set a quantity from 1 to 5.</p>
+                </div>
+
+                <div id="food-panel" class="request-panel" style="display: none;">
+                    <label class="request-panel-title">Food &amp; Beverage Menu</label>
+                    <div class="request-option-grid">
+                        <div class="request-option-card">
+                            <label for="food_item">Meal</label>
+                            <select id="food_item" name="food_item">
+                                <option value="">Choose a meal</option>
+                                <option value="Chicken Burger">Chicken Burger</option>
+                                <option value="Vegetarian Pasta">Vegetarian Pasta</option>
+                                <option value="Club Sandwich">Club Sandwich</option>
+                                <option value="Grilled Salmon">Grilled Salmon</option>
+                                <option value="Beef Steak">Beef Steak</option>
+                                <option value="Margherita Pizza">Margherita Pizza</option>
+                                <option value="Caesar Salad">Caesar Salad</option>
+                                <option value="Fish and Chips">Fish and Chips</option>
+                                <option value="Nasi Lemak">Nasi Lemak</option>
+                                <option value="Fried Rice">Fried Rice</option>
+                            </select>
+                        </div>
+                        <div class="request-option-card">
+                            <label for="drink">Drink</label>
+                            <select id="drink" name="drink">
+                                <option value="">Choose a drink</option>
+                                <option value="Orange Juice">Orange Juice</option>
+                                <option value="Coffee">Coffee</option>
+                                <option value="Water">Water</option>
+                                <option value="Tea">Tea</option>
+                                <option value="Soda">Soda</option>
+                                <option value="Iced Lemon Tea">Iced Lemon Tea</option>
+                                <option value="Hot Chocolate">Hot Chocolate</option>
+                                <option value="Mineral Water">Mineral Water</option>
+                                <option value="Apple Juice">Apple Juice</option>
+                            </select>
+                        </div>
+                        <div class="request-option-card">
+                            <label for="soup">Soup of the Day</label>
+                            <select id="soup" name="soup">
+                                <option value="">Choose soup</option>
+                                <option value="Tomato Soup">Tomato Soup</option>
+                                <option value="Chicken Soup">Chicken Soup</option>
+                                <option value="Vegetable Soup">Vegetable Soup</option>
+                                <option value="Mushroom Soup">Mushroom Soup</option>
+                                <option value="Seafood Chowder">Seafood Chowder</option>
+                                <option value="Miso Soup">Miso Soup</option>
+                            </select>
+                        </div>
+                        <div class="request-option-card">
+                            <label for="dessert">Dessert</label>
+                            <select id="dessert" name="dessert">
+                                <option value="">Choose dessert</option>
+                                <option value="Chocolate Cake">Chocolate Cake</option>
+                                <option value="Fruit Tart">Fruit Tart</option>
+                                <option value="Ice Cream">Ice Cream</option>
+                                <option value="Cheesecake">Cheesecake</option>
+                                <option value="Tiramisu">Tiramisu</option>
+                                <option value="Apple Pie">Apple Pie</option>
+                                <option value="Creme Brulee">Creme Brulee</option>
+                            </select>
+                        </div>
+                    </div>
+                    <p class="request-help">A meal can include a drink, soup of the day, and dessert.</p>
+                </div>
+
+                <div id="repair-panel" class="request-panel" style="display: none;">
+                    <label class="request-panel-title">Repair Request</label>
+                    <div class="request-option-grid">
+                        <div class="request-option-card">
+                            <label for="repair_equipment">Equipment</label>
+                            <select id="repair_equipment" name="repair_equipment">
+                                <option value="">Choose equipment</option>
+                                <option value="Air Conditioner">Air Conditioner</option>
+                                <option value="Television">Television</option>
+                                <option value="Wi-Fi Router">Wi-Fi Router</option>
+                                <option value="Light Fixture">Light Fixture</option>
+                            </select>
+                        </div>
+                        <div class="request-option-card">
+                            <label for="repair_issue">Issue</label>
+                            <input type="text" id="repair_issue" name="repair_issue" placeholder="Describe the problem">
+                        </div>
+                    </div>
+                </div>
+
+                <div id="other-panel" class="request-panel" style="display: none;">
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label for="other_request_text">Other request</label>
+                        <textarea id="other_request_text" name="other_request_text" placeholder="Tell us about any other special request..."></textarea>
+                    </div>
+                    <p class="request-help">Use this section for anything not covered by the other request categories.</p>
+                </div>
+                        </div>
+                    </div>
+                </div>
+
+                <button type="submit" class="btn btn-primary btn-block">Submit Request</button>
+            </form>
+            
+            {% else %}
+            <div style="background: #fff3cd; padding: 1.5rem; border-radius: var(--radius-lg); border-left: 4px solid #ffc107; margin-bottom: 2rem;">
+                <p style="color: #856404; margin: 0; font-size: 0.95rem;">
+                    <strong>Note:</strong> You can submit special requests once the admin has checked you in. Please complete check-in first.
+                </p>
+            </div>
+            {% endif %}
+            {% endif %}
+
+            <!-- Previous Requests -->
+            {% if requests_list or (session["role"] == "admin" and has_any_requests) %}
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 3rem; margin-bottom: 1.5rem;">
+                    <h2 style="margin: 0;"> 
+                        {% if session["role"] == "admin" %}
+                            All Requests
+                        {% else %}
+                            Your Requests
+                        {% endif %}
+                    </h2>
+                    {% if session["role"] == "admin" %}
+                        <a href="/admin/requests/accept-all" class="btn btn-primary" style="padding: 0.5rem 1rem; font-size: 12px;">Accept All Pending</a>
+                    {% endif %}
+                </div>
+                {% set pending_count = requests_list | selectattr('status', 'equalto', 'Pending') | list | length %}
+                {% if pending_count > 0 and session["role"] == "admin" %}
+                    <p style="color: var(--text-3); margin-bottom: 1rem;">Queue: {{ pending_count }} pending request{% if pending_count != 1 %}s{% endif %}</p>
+                {% endif %}
+                {% if session["role"] == "admin" %}
+                    <form method="GET" style="display: flex; gap: 1rem; flex-wrap: wrap; align-items: flex-end; margin-bottom: 1.5rem; background: var(--white); padding: 1rem 1.25rem; border-radius: var(--radius-lg); box-shadow: var(--shadow-md);">
+                        <label style="font-size: 12px; color: var(--text-3); display: flex; flex-direction: column; gap: 0.25rem;">
+                            Status
+                            <select name="filter_status" onchange="this.form.submit()">
+                                <option value="">All</option>
+                                <option value="Pending" {% if filter_status == 'Pending' %}selected{% endif %}>Pending</option>
+                                <option value="Completed" {% if filter_status == 'Completed' %}selected{% endif %}>Completed</option>
+                                <option value="Cancelled" {% if filter_status == 'Cancelled' %}selected{% endif %}>Cancelled</option>
+                            </select>
+                        </label>
+                        <label style="font-size: 12px; color: var(--text-3); display: flex; flex-direction: column; gap: 0.25rem;">
+                            Priority
+                            <select name="filter_priority" onchange="this.form.submit()">
+                                <option value="">All</option>
+                                <option value="High" {% if filter_priority == 'High' %}selected{% endif %}>High</option>
+                                <option value="Medium" {% if filter_priority == 'Medium' %}selected{% endif %}>Medium</option>
+                                <option value="Low" {% if filter_priority == 'Low' %}selected{% endif %}>Low</option>
+                            </select>
+                        </label>
+                        <label style="font-size: 12px; color: var(--text-3); display: flex; flex-direction: column; gap: 0.25rem;">
+                            Category
+                            <select name="filter_category" onchange="this.form.submit()">
+                                <option value="">All</option>
+                                <option value="Toiletries" {% if filter_category == 'Toiletries' %}selected{% endif %}>Toiletries</option>
+                                <option value="Food & Beverage" {% if filter_category == 'Food & Beverage' %}selected{% endif %}>Food & Beverage</option>
+                                <option value="Repair" {% if filter_category == 'Repair' %}selected{% endif %}>Repair</option>
+                                <option value="Other" {% if filter_category == 'Other' %}selected{% endif %}>Other</option>
+                            </select>
+                        </label>
+                        <label style="font-size: 12px; color: var(--text-3); display: flex; flex-direction: column; gap: 0.25rem;">
+                            Sort by
+                            <select name="sort" onchange="this.form.submit()">
+                                <option value="priority" {% if sort_by == 'priority' %}selected{% endif %}>Priority (recommended)</option>
+                                <option value="waiting" {% if sort_by == 'waiting' %}selected{% endif %}>Waiting time</option>
+                                <option value="room" {% if sort_by == 'room' %}selected{% endif %}>Room</option>
+                            </select>
+                        </label>
+                        {% if filter_status or filter_priority or filter_category or (sort_by and sort_by != 'priority') %}
+                            <a href="/requests" class="btn btn-outline" style="padding: 0.5rem 1rem; font-size: 12px;">Clear filters</a>
+                        {% endif %}
+                    </form>
+                {% endif %}
+                {% if not requests_list %}
+                    <p style="color: var(--text-3); text-align: center; padding: 2rem;">No requests match the selected filters</p>
+                {% endif %}
+                {% for req in requests_list %}
+                    <div style="background: var(--white); padding: 1.5rem; border-radius: var(--radius-lg); margin-bottom: 1rem; border-left: 4px solid {% if req.display_status == 'Completed' %}#0d6efd{% elif req.display_status == 'Cancelled' %}#dc2626{% else %}var(--gold){% endif %};">
+                        {% if session["role"] == "admin" %}
+                            <p style="color: var(--text-3); font-size: 12px; margin-bottom: 0.25rem;"><strong>From:</strong> {{ req.username }}</p>
+                            <p style="color: var(--text-3); font-size: 12px; margin-bottom: 0.25rem;"><strong>Room:</strong> {{ req.get('room_number', 'N/A') }}</p>
+                            <p style="color: var(--text-3); font-size: 12px; margin-bottom: 0.5rem;"><strong>Queue No.:</strong> {{ req.get('queue_ticket') or '—' }}</p>
+                        {% endif %}
+                        <p style="color: var(--text); font-size: 14px; margin-bottom: 0.5rem;">{{ req.message }}</p>
+                        {% if req.get('guest_name') %}
+                            <p style="color: var(--text-3); font-size: 12px; margin-bottom: 0.5rem;"><strong>Guest Name:</strong> {{ req.guest_name }}</p>
+                        {% endif %}
+                        {% if req.get('effective_priority') %}
+                            <p style="color: var(--text-3); font-size: 12px; margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+                                <strong>Priority:</strong>
+                                <span style="padding: 0.2rem 0.5rem; border-radius: 999px; background: {% if req.effective_priority == 'High' %}#f8d7da{% elif req.effective_priority == 'Medium' %}#fff3cd{% else %}#e2e3e5{% endif %}; color: {% if req.effective_priority == 'High' %}#721c24{% elif req.effective_priority == 'Medium' %}#856404{% else %}#383d41{% endif %};">
+                                    {{ req.effective_priority }}
+                                </span>
+                                {% if req.get('escalated') %}
+                                    <span title="Auto-escalated after waiting too long" style="padding: 0.15rem 0.5rem; border-radius: 999px; background: #e0d4f7; color: #4c1d95; font-size: 11px; font-weight: 600;">⬆ Escalated</span>
+                                {% endif %}
+                            </p>
+                        {% endif %}
+                        {% if req.status == "Pending" %}
+                            <p style="color: var(--text-3); font-size: 12px; margin-bottom: 1rem;">
+                                {% if session["role"] == "admin" %}<strong>Queue Position:</strong> #{{ req.queue_position }} &nbsp;•&nbsp; {% endif %}
+                                {% if req.get('expected_arrival') %}<strong>Expected Arrival:</strong> {{ req.expected_arrival }}{% endif %}
+                            </p>
+                        {% endif %}
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <div>
+                                <p style="color: var(--text-3); font-size: 12px; margin: 0 0 0.5rem 0;">
+                                    Status:
+                                    <span style="padding: 0.25rem 0.75rem; border-radius: 20px; background: {% if req.display_status == 'Completed' %}#cfe2ff{% elif req.display_status == 'Cancelled' %}#f8d7da{% else %}#fff3cd{% endif %}; color: {% if req.display_status == 'Completed' %}#084298{% elif req.display_status == 'Cancelled' %}#721c24{% else %}#856404{% endif %};">
+                                        {{ req.display_status }}
+                                    </span>
+                                </p>
+                                {% if req.status == 'Accepted' %}
+                                    {% if req.get('received') %}
+                                        <p style="color: #4caf50; font-size: 12px; margin: 0; margin-top: 0.5rem;"><strong>✅ Received:</strong> {{ req.received }}</p>
+                                    {% elif req.get('estimated_time_remaining') %}
+                                        <p style="color: #4caf50; font-size: 12px; margin: 0; margin-top: 0.5rem;">
+                                            <strong>⏱ Estimated Time:</strong> {{ req.get('estimated_time_remaining') }}
+                                        </p>
+                                    {% else %}
+                                        <p style="color: #999; font-size: 11px; margin: 0; margin-top: 0.5rem;">Calculating time...</p>
+                                    {% endif %}
+                                {% endif %}
+                            </div>
+                            {% if session["role"] == "admin" and req.status == "Pending" %}
+                                <a href="/admin/requests/accept/{{ req.id }}" class="btn btn-primary" style="padding: 0.5rem 1rem; font-size: 12px; align-self: flex-start;">Accept</a>
+                            {% endif %}
+                            {% if session["role"] != "admin" and req.status == "Pending" %}
+                                <a href="/requests/cancel/{{ req.id }}" class="btn btn-outline" style="padding: 0.5rem 1rem; font-size: 12px; align-self: flex-start; color: #dc2626; border-color: #dc2626;">Cancel</a>
+                            {% endif %}
+                            {% if session["role"] != "admin" and req.status == "Accepted" %}
+                                {% if req.get('received') == 'Yes' %}
+                                    <span style="padding: 0.5rem 1rem; font-size: 12px; color: #155724;">Received</span>
+                                {% else %}
+                                    <a href="/requests/received/{{ req.id }}" class="btn btn-outline" style="padding: 0.5rem 1rem; font-size: 12px; align-self: flex-start;">Mark Received</a>
+                                {% endif %}
+                            {% endif %}
+                        </div>
+                    </div>
+                {% endfor %}
+            {% else %}
+                <p style="color: var(--text-3); text-align: center; padding: 2rem;">
+                    {% if session["role"] == "admin" %}
+                        No requests yet
+                    {% else %}
+                        You haven't submitted any requests yet
+                    {% endif %}
+                </p>
+            {% endif %}
+        </div>
+    </section>
+
+    <script>
+        const navbar = document.querySelector('.navbar');
+        const requestForm = document.getElementById('special-request-form');
+        const requestType = document.getElementById('request_type');
+        const requestModal = document.getElementById('request-modal');
+        const closeButton = document.getElementById('close-request-modal');
+        const quantityValidationError = document.getElementById('quantity-validation-error');
+        const panels = {
+            'Toiletries': document.getElementById('toiletries-panel'),
+            'Food & Beverage': document.getElementById('food-panel'),
+            'Repair': document.getElementById('repair-panel'),
+            'Other': document.getElementById('other-panel')
+        };
+
+        function openRequestModal() {
+            const selected = requestType?.value || '';
+            Object.entries(panels).forEach(([key, panel]) => {
+                if (panel) {
+                    panel.style.display = selected === key ? 'block' : 'none';
+                }
+            });
+            if (selected && requestModal) {
+                requestModal.style.display = 'flex';
+            } else if (requestModal) {
+                requestModal.style.display = 'none';
+            }
+        }
+
+        function showQuantityValidationError(message) {
+            if (quantityValidationError) {
+                quantityValidationError.textContent = message;
+                quantityValidationError.style.display = 'block';
+            }
+            alert(message);
+        }
+
+        function clearQuantityValidationError() {
+            if (quantityValidationError) {
+                quantityValidationError.textContent = '';
+                quantityValidationError.style.display = 'none';
+            }
+        }
+
+        function validateQuantityInputs() {
+            if (requestType?.value !== 'Toiletries') {
+                clearQuantityValidationError();
+                return true;
+            }
+
+            const toiletryInputs = Array.from(document.querySelectorAll('#toiletries-panel input[type="number"]'));
+            const invalidInputs = toiletryInputs.filter((input) => {
+                const rawValue = input.value.trim();
+                if (!rawValue || rawValue === '0') {
+                    return false;
+                }
+                const value = Number(rawValue);
+                return Number.isFinite(value) && (value < 1 || value > 5);
+            });
+
+            if (invalidInputs.length > 0) {
+                showQuantityValidationError('Please enter the correct quantity which is 1-5.');
+                invalidInputs[0].focus();
+                return false;
+            }
+            clearQuantityValidationError();
+            return true;
+        }
+
+        function closeRequestModal() {
+            if (requestModal) requestModal.style.display = 'none';
+            Object.values(panels).forEach((panel) => {
+                if (panel) panel.style.display = 'none';
+            });
+        }
+
+        let stashedRequestTypeValue = '';
+
+        requestType?.addEventListener('mousedown', () => {
+            stashedRequestTypeValue = requestType.value;
+            requestType.value = '';
+        });
+        requestType?.addEventListener('blur', () => {
+            if (!requestType.value && stashedRequestTypeValue) {
+                requestType.value = stashedRequestTypeValue;
+            }
+        });
+        requestType?.addEventListener('change', openRequestModal);
+        closeButton?.addEventListener('click', closeRequestModal);
+        requestModal?.addEventListener('click', (event) => {
+            if (event.target.classList.contains('request-modal-backdrop')) {
+                closeRequestModal();
+            }
+        });
+        requestForm?.addEventListener('submit', (event) => {
+            if (!validateQuantityInputs()) {
+                event.preventDefault();
+            }
+        });
+
+        document.querySelectorAll('#toiletries-panel input[type="number"]').forEach((input) => {
+            input.addEventListener('input', () => {
+                const value = Number(input.value);
+                if (input.value.trim() !== '' && Number.isFinite(value) && value >= 1 && value <= 5) {
+                    clearQuantityValidationError();
+                }
+            });
+        });
+        {% if error %}
+        openRequestModal();
+        {% endif %}
+
+        window.addEventListener('scroll', () => {
+            if (window.scrollY > 60) navbar.classList.add('scrolled');
+            else navbar.classList.remove('scrolled');
+        });
+    </script>
+</body>
+</html>

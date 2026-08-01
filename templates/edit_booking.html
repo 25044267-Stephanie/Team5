@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Edit Booking</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="has-navbar">
+    <nav class="navbar">
+        <div class="navbar-brand">
+            <a href="/admin/dashboard" class="navbar-logo">🏨 Hotel Manager</a>
+        </div>
+        <div class="navbar-right">
+            <span class="navbar-user">{{ session.username }}</span>
+            <a href="/logout" class="navbar-logout">Logout</a>
+        </div>
+    </nav>
+
+    <section style="min-height: calc(100vh - 70px); padding-top: 80px;">
+        <div class="container">
+            <h1>Edit Booking #{{ booking.get('id') }}</h1>
+            <p class="subtitle">Room {{ booking.get('room_number', 'N/A') }} — {{ booking.get('room_type', 'N/A') }}</p>
+
+            {% if error %}
+                <div class="alert alert-error">{{ error }}</div>
+            {% endif %}
+
+            <form method="post" id="edit-booking-form">
+                <div style="display:flex; gap:1rem; flex-wrap:wrap; max-width:520px;">
+                    <label style="flex:1; min-width:220px;">
+                        Guest First Name
+                        <input type="text" name="guest_first_name" value="{{ booking.get('guest_first_name', '') }}" required>
+                    </label>
+                    <label style="flex:1; min-width:220px;">
+                        Guest Last Name
+                        <input type="text" name="guest_last_name" value="{{ booking.get('guest_last_name', '') }}" required>
+                    </label>
+                </div>
+
+                <div style="display:flex; gap:1rem; flex-wrap:wrap; max-width:520px; margin-top:1rem;">
+                    <label style="flex:1; min-width:220px;">
+                        Phone Number
+                        <input type="tel" name="phone_number" id="phone_number" value="{{ booking.get('phone_number', '') }}" required placeholder="Example: 96751234">
+                    </label>
+                    <label style="flex:1; min-width:220px;">
+                        Email
+                        <input type="email" name="email" value="{{ booking.get('email', '') }}" required>
+                    </label>
+                </div>
+
+                <div style="display:flex; gap:1rem; flex-wrap:wrap; max-width:520px; margin-top:1rem;">
+                    <label style="flex:1; min-width:220px;">
+                        Check-in
+                        <input type="date" name="checkin_date" id="checkin_date" value="{{ booking.get('checkin_date', '') }}" required>
+                    </label>
+                    <label style="flex:1; min-width:220px;">
+                        Check-out
+                        <input type="date" name="checkout_date" id="checkout_date" value="{{ booking.get('checkout_date', '') }}" required>
+                    </label>
+                </div>
+
+                <div style="margin-top:1rem;">
+                    <button class="btn btn-primary">Save Changes</button>
+                    <a href="/bookings" class="btn btn-outline">Cancel</a>
+                </div>
+            </form>
+        </div>
+    </section>
+
+    <script>
+        const phoneInput = document.getElementById('phone_number');
+        const editBookingForm = document.getElementById('edit-booking-form');
+
+        function validatePhoneNumber() {
+            const value = phoneInput?.value?.trim() || '';
+            const valid = /^([8-9]\d{7})$/.test(value);
+            if (!valid && value) {
+                alert('Phone number must be exactly 8 digits and start with 8 or 9.');
+                phoneInput?.focus();
+                return false;
+            }
+            return true;
+        }
+
+        editBookingForm?.addEventListener('submit', (event) => {
+            if (!validatePhoneNumber()) {
+                event.preventDefault();
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% if just_submitted %}Feedback Submitted{% else %}Submitted Feedback{% endif %}</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="has-navbar">
+    <nav class="navbar">
+        <div class="navbar-brand">
+            <a href="/user/dashboard" class="navbar-logo">🏨 Hotel Manager</a>
+        </div>
+        <div class="navbar-right">
+            <span class="navbar-user">{{ session.username }}</span>
+            <a href="/logout" class="navbar-logout">Logout</a>
+        </div>
+    </nav>
+
+    <div style="background: var(--sand); padding: 0.75rem 0;">
+        <div style="padding-left: 3cm;">
+            <a href="/my-feedback" class="btn btn-gold" style="font-size: 0.85rem; padding: 0.5rem 1rem;">← Back</a>
+        </div>
+    </div>
+
+    <section style="background: var(--sand); min-height: calc(100vh - 70px); padding-top: 80px;">
+        <div class="container" style="max-width: 640px;">
+            <h1 style="margin-bottom: 0.5rem;">{% if just_submitted %}Feedback Submitted{% else %}Your Submitted Feedback{% endif %}</h1>
+            <p class="subtitle" style="margin-bottom: 2rem;">A read-only record of your response for this stay.</p>
+
+            {% if just_submitted %}
+            <div style="background: rgba(93, 143, 93, 0.15); color: var(--palm-3); padding: 1.25rem 1.5rem; border-radius: var(--radius-lg); margin-bottom: 2rem;">
+                <strong>Thank you.</strong> Your feedback has been submitted successfully.
+            </div>
+            {% endif %}
+
+            <div class="submitted-feedback-card">
+                <div class="feedback-booking-details" style="margin-bottom: 1.5rem;">
+                    <h3 style="margin-bottom: 0.75rem; font-size: 1rem; color: var(--palm);">Stay Details</h3>
+                    <div class="feedback-detail-grid">
+                        <div>
+                            <span class="feedback-detail-label">Guest Name</span>
+                            <span class="feedback-detail-value">{{ entry.guest_name }}</span>
+                        </div>
+                        <div>
+                            <span class="feedback-detail-label">Room Number</span>
+                            <span class="feedback-detail-value">{{ entry.room_number }}</span>
+                        </div>
+                        {% if entry.room_type %}
+                        <div>
+                            <span class="feedback-detail-label">Room Type</span>
+                            <span class="feedback-detail-value">{{ entry.room_type }}</span>
+                        </div>
+                        {% endif %}
+                        <div>
+                            <span class="feedback-detail-label">Check-In Date</span>
+                            <span class="feedback-detail-value">{{ entry.checkin_date }}</span>
+                        </div>
+                        <div>
+                            <span class="feedback-detail-label">Check-Out Date</span>
+                            <span class="feedback-detail-value">{{ entry.checkout_date }}</span>
+                        </div>
+                        <div>
+                            <span class="feedback-detail-label">Submitted At</span>
+                            <span class="feedback-detail-value">{{ entry.submitted_at }}</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="submitted-feedback-ratings">
+                    <div>
+                        <span class="feedback-detail-label">Facilities Rating</span>
+                        <span class="feedback-detail-value">{{ entry.facilities_rating }} out of 5</span>
+                    </div>
+                    <div>
+                        <span class="feedback-detail-label">Amenities Rating</span>
+                        <span class="feedback-detail-value">{{ entry.amenities_rating }} out of 5</span>
+                    </div>
+                    <div>
+                        <span class="feedback-detail-label">Comfort and Cleanliness Rating</span>
+                        <span class="feedback-detail-value">{{ entry.comfort_cleanliness_rating }} out of 5</span>
+                    </div>
+                </div>
+
+                <div class="submitted-feedback-comment">
+                    <span class="feedback-detail-label">Additional Feedback</span>
+                    <p class="submitted-feedback-comment-text">{{ entry.additional_feedback }}</p>
+                </div>
+            </div>
+
+            <div class="submitted-feedback-actions">
+                <a href="/user/dashboard" class="btn btn-primary">Return to Guest Dashboard</a>
+                <a href="/my-feedback" class="btn btn-gold">View All My Feedback</a>
+            </div>
+        </div>
+    </section>
+
+    <script>
+        const navbar = document.querySelector('.navbar');
+        window.addEventListener('scroll', () => {
+            if (window.scrollY > 60) navbar.classList.add('scrolled');
+            else navbar.classList.remove('scrolled');
+        });
+    </script>
+</body>
+</html>

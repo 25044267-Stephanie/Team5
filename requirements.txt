@@ -1,0 +1,26 @@
+# Runtime dependencies only — pinned for reproducible image builds.
+# WHY: Unpinned installs silently drift between laptop, CI, and EC2; pinning
+# every package (including transitive ones we rely on) makes `docker build`
+# and `pip install` produce the same environment every time.
+#
+# Install:  pip install -r requirements.txt
+# Dev/test: pip install -r requirements-dev.txt
+
+blinker==1.9.0
+cffi==2.1.0
+click==8.4.2
+cryptography==50.0.0
+Flask==3.1.3
+Flask-SQLAlchemy==3.1.1
+greenlet==3.5.4
+gunicorn==26.0.0
+itsdangerous==2.2.0
+Jinja2==3.1.6
+MarkupSafe==3.0.3
+pycparser==3.0
+PyMySQL==1.2.0
+python-dotenv==1.2.2
+SQLAlchemy==2.0.51
+tzdata==2025.2
+typing_extensions==4.16.0
+Werkzeug==3.1.8

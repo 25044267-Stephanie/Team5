@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="has-navbar">
+    <!-- NAVIGATION -->
+    <nav class="navbar">
+        <div class="navbar-brand">
+            <a href="{% if session["role"] == "admin" %}/admin/dashboard{% else %}/user/dashboard{% endif %}" class="navbar-logo">🏨 Hotel Manager</a>
+            <span class="navbar-title">Admin Panel</span>
+        </div>
+        <div class="navbar-right">
+            <span class="navbar-badge">ADMIN</span>
+            <span class="navbar-user">{{ session.username }}</span>
+            <a href="/logout" class="navbar-logout">Logout</a>
+        </div>
+    </nav>
+
+    <!-- DASHBOARD -->
+    <section class="dashboard">
+        <div class="container">
+            <div class="dashboard-header">
+                <h1 class="dashboard-title">Admin Dashboard</h1>
+                <p class="dashboard-subtitle">Manage all hotel operations and guest services</p>
+            </div>
+            
+            <div class="dashboard-grid">
+                <a href="/rooms" class="dashboard-item">
+                    <span class="dashboard-icon">🛏️</span>
+                    <h3 class="dashboard-item-title">Manage Rooms</h3>
+                    <p class="dashboard-item-desc">Add, edit, and delete room listings</p>
+                </a>
+                
+                <a href="/bookings" class="dashboard-item">
+                    <span class="dashboard-icon">📋</span>
+                    <h3 class="dashboard-item-title">View Bookings</h3>
+                    <p class="dashboard-item-desc">Monitor all reservations and bookings</p>
+                </a>
+                
+                <a href="/requests" class="dashboard-item">
+                    <span class="dashboard-icon">📬</span>
+                    <h3 class="dashboard-item-title">View Requests</h3>
+                    <p class="dashboard-item-desc">Manage guest special requests</p>
+                </a>
+                
+                <a href="/checkin" class="dashboard-item">
+                    <span class="dashboard-icon">🎟️</span>
+                    <h3 class="dashboard-item-title">Check-Ins</h3>
+                    <p class="dashboard-item-desc">Process and track guest check-ins</p>
+                </a>
+
+                <a href="/admin/feedback" class="dashboard-item">
+                    <span class="dashboard-icon">🗣️</span>
+                    <h3 class="dashboard-item-title">Guest Feedback</h3>
+                    <p class="dashboard-item-desc">Review feedback submitted by guests</p>
+                </a>
+
+                <a href="/admin/points/adjustments" class="dashboard-item">
+                    <span class="dashboard-icon">⭐</span>
+                    <h3 class="dashboard-item-title">Loyalty Adjustments</h3>
+                    <p class="dashboard-item-desc">Audit log of manual point adjustments and expirations</p>
+                </a>
+            </div>
+        </div>
+    </section>
+
+    <script>
+        const navbar = document.querySelector('.navbar');
+        window.addEventListener('scroll', () => {
+            if (window.scrollY > 60) {
+                navbar.classList.add('scrolled');
+            } else {
+                navbar.classList.remove('scrolled');
+            }
+        });
+    </script>
+</body>
+</html>

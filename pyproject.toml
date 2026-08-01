@@ -1,0 +1,26 @@
+# Tooling config for local dev and GitHub Actions.
+#
+# WHY: Keeping ruff settings in-repo means CI and every laptop use the same
+# rule set. conftest.py intentionally imports after mutating MYSQL_DATABASE,
+# so E402 is ignored only for that file.
+
+[tool.ruff]
+target-version = "py311"
+line-length = 120
+src = [".", "scripts", "tests"]
+
+[tool.ruff.lint]
+# Start with real-defect rules (unused imports, undefined names, syntax).
+# Style-only churn on the 1600-line monolith is deferred so Core CI stays green.
+select = ["E", "F", "I", "W"]
+ignore = [
+  "E501", # long lines exist throughout the legacy monolith; not a defect gate
+]
+
+[tool.ruff.lint.per-file-ignores]
+# conftest must set MYSQL_DATABASE before importing app/config.
+"tests/conftest.py" = ["E402"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Give Feedback</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="has-navbar">
+    <nav class="navbar">
+        <div class="navbar-brand">
+            <a href="/user/dashboard" class="navbar-logo">🏨 Hotel Manager</a>
+        </div>
+        <div class="navbar-right">
+            <span class="navbar-user">{{ session.username }}</span>
+            <a href="/logout" class="navbar-logout">Logout</a>
+        </div>
+    </nav>
+
+    <div style="background: var(--sand); padding: 0.75rem 0;">
+        <div style="padding-left: 3cm;">
+            <a href="/user/dashboard" class="btn btn-gold" style="font-size: 0.85rem; padding: 0.5rem 1rem;">← Back</a>
+        </div>
+    </div>
+
+    <section style="background: var(--sand); min-height: calc(100vh - 70px); padding-top: 80px;">
+        <div class="container" style="max-width: 640px;">
+            <h1 style="margin-bottom: 0.5rem;">Tell Us About Your Stay</h1>
+            <p class="subtitle" style="margin-bottom: 2rem;">Your feedback helps us improve every guest's experience.</p>
+
+            {% if error %}
+                <div class="login-error" style="margin-bottom: 1.5rem;">{{ error }}</div>
+            {% endif %}
+
+            {% if booking_options %}
+            <form method="POST" style="background: var(--white); padding: 2rem; border-radius: var(--radius-lg); box-shadow: var(--shadow-md);">
+                <div class="form-group">
+                    <label for="booking_id">Which stay is this feedback for?</label>
+                    <select id="booking_id" name="booking_id" required>
+                        <option value="">Select a booking</option>
+                        {% for option in booking_options %}
+                            <option
+                                value="{{ option.value }}"
+                                data-guest-name="{{ option.guest_name }}"
+                                data-username="{{ option.username }}"
+                                data-room-number="{{ option.room_number }}"
+                                data-room-type="{{ option.room_type }}"
+                                data-checkin-date="{{ option.checkin_date }}"
+                                data-checkout-date="{{ option.checkout_date }}"
+                            >{{ option.label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div id="booking-details" class="feedback-booking-details" hidden>
+                    <h3 style="margin-bottom: 0.75rem; font-size: 1rem; color: var(--palm);">Selected Stay Details</h3>
+                    <p class="field-help" style="margin-bottom: 1rem;">These details are taken from your booking and cannot be edited.</p>
+                    <div class="feedback-detail-grid">
+                        <div>
+                            <span class="feedback-detail-label">Guest Name</span>
+                            <span class="feedback-detail-value" id="detail-guest-name">—</span>
+                        </div>
+                        <div>
+                            <span class="feedback-detail-label">Account</span>
+                            <span class="feedback-detail-value" id="detail-username">—</span>
+                        </div>
+                        <div>
+                            <span class="feedback-detail-label">Room Number</span>
+                            <span class="feedback-detail-value" id="detail-room-number">—</span>
+                        </div>
+                        <div>
+                            <span class="feedback-detail-label">Room Type</span>
+                            <span class="feedback-detail-value" id="detail-room-type">—</span>
+                        </div>
+                        <div>
+                            <span class="feedback-detail-label">Check-In Date</span>
+                            <span class="feedback-detail-value" id="detail-checkin-date">—</span>
+                        </div>
+                        <div>
+                            <span class="feedback-detail-label">Check-Out Date</span>
+                            <span class="feedback-detail-value" id="detail-checkout-date">—</span>
+                        </div>
+                    </div>
+                </div>
+
+                <p class="field-help" style="margin: 1.5rem 0 1rem;">Rate each item from 1 (lowest) to 5 (highest).</p>
+
+                <div class="form-group">
+                    <label>1. Rate the room facilities (1–5)</label>
+                    <div class="star-rating" role="radiogroup" aria-label="Room facilities rating">
+                        <input type="radio" id="facilities-5" name="facilities_rating" value="5" required><label for="facilities-5" title="5 — highest">★</label>
+                        <input type="radio" id="facilities-4" name="facilities_rating" value="4"><label for="facilities-4" title="4">★</label>
+                        <input type="radio" id="facilities-3" name="facilities_rating" value="3"><label for="facilities-3" title="3">★</label>
+                        <input type="radio" id="facilities-2" name="facilities_rating" value="2"><label for="facilities-2" title="2">★</label>
+                        <input type="radio" id="facilities-1" name="facilities_rating" value="1"><label for="facilities-1" title="1 — lowest">★</label>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>2. Rate the room amenities (1–5)</label>
+                    <div class="star-rating" role="radiogroup" aria-label="Room amenities rating">
+                        <input type="radio" id="amenities-5" name="amenities_rating" value="5" required><label for="amenities-5" title="5 — highest">★</label>
+                        <input type="radio" id="amenities-4" name="amenities_rating" value="4"><label for="amenities-4" title="4">★</label>
+                        <input type="radio" id="amenities-3" name="amenities_rating" value="3"><label for="amenities-3" title="3">★</label>
+                        <input type="radio" id="amenities-2" name="amenities_rating" value="2"><label for="amenities-2" title="2">★</label>
+                        <input type="radio" id="amenities-1" name="amenities_rating" value="1"><label for="amenities-1" title="1 — lowest">★</label>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>3. Rate the overall comfort and cleanliness of the room (1–5)</label>
+                    <div class="star-rating" role="radiogroup" aria-label="Comfort and cleanliness rating">
+                        <input type="radio" id="comfort-5" name="comfort_cleanliness_rating" value="5" required><label for="comfort-5" title="5 — highest">★</label>
+                        <input type="radio" id="comfort-4" name="comfort_cleanliness_rating" value="4"><label for="comfort-4" title="4">★</label>
+                        <input type="radio" id="comfort-3" name="comfort_cleanliness_rating" value="3"><label for="comfort-3" title="3">★</label>
+                        <input type="radio" id="comfort-2" name="comfort_cleanliness_rating" value="2"><label for="comfort-2" title="2">★</label>
+                        <input type="radio" id="comfort-1" name="comfort_cleanliness_rating" value="1"><label for="comfort-1" title="1 — lowest">★</label>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="additional_feedback">4. Please share any additional feedback or suggestions that can help our hotel team improve.</label>
+                    <textarea
+                        id="additional_feedback"
+                        name="additional_feedback"
+                        required
+                        maxlength="{{ max_feedback_length }}"
+                        placeholder="Share your suggestions here…"
+                    ></textarea>
+                    <p class="field-help">Required. Maximum {{ max_feedback_length }} characters.</p>
+                </div>
+
+                <button type="submit" class="btn btn-primary btn-block">Submit Feedback</button>
+            </form>
+            {% else %}
+            <div style="background: #fff3cd; padding: 1.5rem; border-radius: var(--radius-lg); border-left: 4px solid #ffc107;">
+                <p style="color: #856404; margin: 0; font-size: 0.95rem;">
+                    <strong>Note:</strong> You don't have any eligible bookings left to leave feedback for.
+                </p>
+            </div>
+            {% endif %}
+        </div>
+    </section>
+
+    <script>
+        (function () {
+            const select = document.getElementById('booking_id');
+            const details = document.getElementById('booking-details');
+            if (!select || !details) return;
+
+            const fields = {
+                guestName: document.getElementById('detail-guest-name'),
+                username: document.getElementById('detail-username'),
+                roomNumber: document.getElementById('detail-room-number'),
+                roomType: document.getElementById('detail-room-type'),
+                checkinDate: document.getElementById('detail-checkin-date'),
+                checkoutDate: document.getElementById('detail-checkout-date'),
+            };
+
+            function updateDetails() {
+                const option = select.options[select.selectedIndex];
+                if (!option || !option.value) {
+                    details.hidden = true;
+                    return;
+                }
+                fields.guestName.textContent = option.dataset.guestName || '—';
+                fields.username.textContent = option.dataset.username || '—';
+                fields.roomNumber.textContent = option.dataset.roomNumber || '—';
+                fields.roomType.textContent = option.dataset.roomType || '—';
+                fields.checkinDate.textContent = option.dataset.checkinDate || '—';
+                fields.checkoutDate.textContent = option.dataset.checkoutDate || '—';
+                details.hidden = false;
+            }
+
+            select.addEventListener('change', updateDetails);
+            updateDetails();
+
+            const navbar = document.querySelector('.navbar');
+            window.addEventListener('scroll', () => {
+                if (window.scrollY > 60) navbar.classList.add('scrolled');
+                else navbar.classList.remove('scrolled');
+            });
+        })();
+    </script>
+</body>
+</html>

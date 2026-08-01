@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rooms - Hotel Management</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="has-navbar">
+    <!-- NAVIGATION -->
+    <nav class="navbar">
+        <div class="navbar-brand">
+            <a href="{% if session["role"] == "admin" %}/admin/dashboard{% else %}/user/dashboard{% endif %}" class="navbar-logo">🏨 Hotel Manager</a>
+        </div>
+        <div class="navbar-right">
+            <span class="navbar-user">{{ session.username }}</span>
+            <a href="/logout" class="navbar-logout">Logout</a>
+        </div>
+    </nav>
+
+    <div style="padding: 0.75rem 0;">
+        <div style="padding-left: 3cm;">
+            {% if session["role"] == "admin" %}
+                <a href="/admin/dashboard" class="btn btn-gold" style="font-size: 0.85rem; padding: 0.5rem 1rem;">← Back</a>
+            {% else %}
+                <a href="/user/dashboard" class="btn btn-gold" style="font-size: 0.85rem; padding: 0.5rem 1rem;">← Back</a>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- ROOMS SECTION -->
+    <section class="rooms-container">
+        <div class="container">
+            <div class="rooms-header">
+                <div>
+                    <span class="tag">Our Accommodations</span>
+                    <h1>Hotel Rooms</h1>
+                </div>
+                
+                <div style="display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap;">
+                    <form method="GET" action="/rooms" style="display: flex; gap: 0.5rem; align-items: center;">
+                        <select name="room_type" style="padding: 0.6rem 0.8rem; border-radius: 999px; border: 1px solid #d1d5db;">
+                            <option value="">All Room Types</option>
+                            <option value="Single" {% if selected_room_type == 'Single' %}selected{% endif %}>Single</option>
+                            <option value="Double" {% if selected_room_type == 'Double' %}selected{% endif %}>Double</option>
+                            <option value="Suite" {% if selected_room_type == 'Suite' %}selected{% endif %}>Suite</option>
+                        </select>
+                        <button type="submit" class="btn btn-gold" style="padding: 0.6rem 1rem;">Filter</button>
+                    </form>
+                    {% if session["role"] == "admin" %}
+                        <a href="/admin/rooms/add" class="btn btn-gold">+ Add New Room</a>
+                    {% endif %}
+                </div>
+            </div>
+
+            {% if session["role"] == "admin" %}
+            <div class="status-filter-bar" style="margin-bottom: 2rem;" id="status-filter-bar">
+                <button type="button" class="status-filter-btn active" data-status-filter="All">
+                    All <span class="filter-count" id="count-All">(0)</span>
+                </button>
+                <button type="button" class="status-filter-btn" data-status-filter="Available">
+                    Available <span class="filter-count" id="count-Available">(0)</span>
+                </button>
+                <button type="button" class="status-filter-btn" data-status-filter="Booked">
+                    Occupied <span class="filter-count" id="count-Booked">(0)</span>
+                </button>
+                <button type="button" class="status-filter-btn" data-status-filter="Maintenance">
+                    Maintenance <span class="filter-count" id="count-Maintenance">(0)</span>
+                </button>
+            </div>
+            {% endif %}
+
+            {% if rooms %}
+                <div class="rooms-grid">
+                    {% for room in rooms %}
+                        <div class="card room-card reveal" data-room-id="{{ room.id }}" data-status="{{ room.status }}">
+                            <div class="card-image" style="padding: 0; overflow: hidden;">
+                                {% if room.get('image') %}
+                                    <img src="{{ room.image }}" alt="Room {{ room.room_number }}" style="width: 100%; height: 220px; object-fit: cover; display: block;">
+                                {% else %}
+                                    <div style="background: linear-gradient(135deg, #e8b85a, #c9973a); display: flex; align-items: center; justify-content: center; color: white; font-size: 3rem; width: 100%; height: 220px;">
+                                        🏠
+                                    </div>
+                                {% endif %}
+                            </div>
+                            
+                            <div class="card-body">
+                                <p class="card-meta">{{ room.type }}</p>
+                                <h3 class="card-title">Room {{ room.room_number }}</h3>
+                                
+                                <div class="room-features">
+                                    <span class="room-feature">Room #{{ room.room_number }}</span>
+                                    <span class="room-feature">{{ room.type }}</span>
+                                </div>
+
+                                <p style="margin: 0.5rem 0 0; color: var(--gold); font-weight: 600; font-size: 0.9rem;">
+                                    ⭐ Earn {{ loyalty_points_per_night.get(room.type, 0) }} pts/night
+                                </p>
+
+                                <p class="card-text">Comfortable and well-equipped room with premium amenities for a pleasant stay.</p>
+                                
+                                <div class="card-footer">
+                                    <div class="card-price">
+                                        <span class="amount">${{ room.price }}</span>
+                                        <span class="period">/ night</span>
+                                    </div>
+                                    <span class="card-status {% if room.status == 'Available' %}status-available{% elif room.status == 'Booked' %}status-booked{% else %}status-pending{% endif %}" id="status-badge-{{ room.id }}">
+                                        {{ room.status }}
+                                    </span>
+                                </div>
+                            </div>
+                            
+                            <div style="padding: 1rem 1.5rem; border-top: 1px solid var(--sand-2); display: flex; gap: 0.75rem; flex-wrap: wrap;">
+                                {% if session["role"] == "user" and room.status == "Available" %}
+                                    <a href="/book/{{ room.id }}" class="btn btn-primary btn-small" style="flex: 1;">Book Now</a>
+                                {% elif session["role"] == "user" and room.status == "Booked" %}
+                                    <button disabled class="btn btn-primary btn-small" style="flex: 1; opacity: 0.5;">Booked</button>
+                                {% elif session["role"] == "user" %}
+                                    <button disabled class="btn btn-primary btn-small" style="flex: 1; opacity: 0.5;">Under Maintenance</button>
+                                {% endif %}
+                                
+                                {% if session["role"] == "admin" %}
+                                    <select class="room-status-select" data-room-id="{{ room.id }}" data-previous-status="{{ room.status }}">
+                                        <option value="Available" {% if room.status == 'Available' %}selected{% endif %}>Available</option>
+                                        <option value="Booked" {% if room.status == 'Booked' %}selected{% endif %}>Occupied</option>
+                                        <option value="Maintenance" {% if room.status == 'Maintenance' %}selected{% endif %}>Maintenance</option>
+                                    </select>
+                                    <a href="/admin/rooms/edit/{{ room.id }}" class="btn btn-outline btn-small" style="flex: 1;">Edit</a>
+                                    <a href="/admin/rooms/delete/{{ room.id }}" class="btn btn-outline btn-small" onclick="return confirm('Are you sure?');" style="flex: 1;">Delete</a>
+                                {% endif %}
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
+                <div class="no-rooms-message" id="no-status-match" style="display: none;">
+                    <p style="font-size: 1.2rem; color: var(--text-2);">No rooms match this status</p>
+                </div>
+            {% else %}
+                <div style="text-align: center; padding: 3rem; background: var(--sand); border-radius: var(--radius-lg);">
+                    <p style="font-size: 1.2rem; color: var(--text-2);">No rooms match the selected room type</p>
+                </div>
+            {% endif %}
+        </div>
+    </section>
+
+    <script>
+        const navbar = document.querySelector('.navbar');
+        window.addEventListener('scroll', () => {
+            if (window.scrollY > 60) navbar.classList.add('scrolled');
+            else navbar.classList.remove('scrolled');
+        });
+
+        // Reveal animation on scroll
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.classList.add('visible');
+                }
+            });
+        }, { threshold: 0.1 });
+
+        document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+
+        // Status filter (admin room-availability view)
+        const statusFilterBar = document.getElementById('status-filter-bar');
+        const roomCards = Array.from(document.querySelectorAll('.room-card'));
+        const noStatusMatch = document.getElementById('no-status-match');
+        let currentStatusFilter = 'All';
+
+        function updateStatusCounts() {
+            const counts = { All: roomCards.length, Available: 0, Booked: 0, Maintenance: 0 };
+            roomCards.forEach((card) => {
+                const status = card.dataset.status;
+                if (counts[status] !== undefined) counts[status] += 1;
+            });
+            Object.keys(counts).forEach((status) => {
+                const countEl = document.getElementById(`count-${status}`);
+                if (countEl) countEl.textContent = `(${counts[status]})`;
+            });
+        }
+
+        function applyStatusFilter() {
+            let visibleCount = 0;
+            roomCards.forEach((card) => {
+                const matches = currentStatusFilter === 'All' || card.dataset.status === currentStatusFilter;
+                card.style.display = matches ? '' : 'none';
+                if (matches) visibleCount += 1;
+            });
+            if (noStatusMatch) {
+                noStatusMatch.style.display = visibleCount === 0 ? 'block' : 'none';
+            }
+        }
+
+        if (statusFilterBar) {
+            statusFilterBar.querySelectorAll('.status-filter-btn').forEach((btn) => {
+                btn.addEventListener('click', () => {
+                    currentStatusFilter = btn.dataset.statusFilter;
+                    statusFilterBar.querySelectorAll('.status-filter-btn').forEach((b) => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    applyStatusFilter();
+                });
+            });
+        }
+
+        updateStatusCounts();
+        applyStatusFilter();
+
+        function setBadgeStatus(roomId, status) {
+            const badge = document.getElementById(`status-badge-${roomId}`);
+            if (!badge) return;
+            badge.classList.remove('status-available', 'status-booked', 'status-pending');
+            if (status === 'Available') badge.classList.add('status-available');
+            else if (status === 'Booked') badge.classList.add('status-booked');
+            else badge.classList.add('status-pending');
+            badge.textContent = status;
+        }
+
+        document.querySelectorAll('.room-status-select').forEach((select) => {
+            select.addEventListener('change', () => {
+                const roomId = select.dataset.roomId;
+                const newStatus = select.value;
+                const previousStatus = select.dataset.previousStatus;
+
+                fetch(`/admin/rooms/status/${roomId}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: `status=${encodeURIComponent(newStatus)}`,
+                })
+                    .then((response) => {
+                        if (!response.ok) throw new Error('Update failed');
+                        return response.json();
+                    })
+                    .then(() => {
+                        const card = document.querySelector(`.room-card[data-room-id="${roomId}"]`);
+                        if (card) card.dataset.status = newStatus;
+                        setBadgeStatus(roomId, newStatus);
+                        select.dataset.previousStatus = newStatus;
+                        updateStatusCounts();
+                        applyStatusFilter();
+                    })
+                    .catch(() => {
+                        alert('Could not update room status. Please try again.');
+                        select.value = previousStatus;
+                    });
+            });
+        });
+    </script>
+</body>
+</html>
