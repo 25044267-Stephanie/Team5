@@ -8,6 +8,9 @@
 # - Non-root USER: if the process is compromised, it does not own the
 #   container filesystem as root.
 # - HEALTHCHECK: Compose / deploy smoke tests probe /healthz (app + DB).
+# - Strip packaging/build tools after install so Trivy does not fail CI on
+#   HIGH CVEs in setuptools/wheel metadata the running app never needs
+#   (Plan A — remove/fix rather than ignore).
 
 # Multi-arch index digest for python:3.11-slim (Docker Hub, verified 2026-08-01).
 ARG PYTHON_IMAGE=python:3.11-slim@sha256:db3ff2e1800a8581e2c48a27c3995339d47bdf046da21c7627accd3d51053a93
@@ -25,12 +28,10 @@ RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
 COPY requirements.txt ./
-# Upgrade packaging tools after the venv exists so Trivy does not fail the
-# CI gate on known-fixed HIGH CVEs in older wheel/jaraco.context metadata
-# that ship with a stock pip bootstrap (Plan A — fix, do not ignore).
-RUN pip install --upgrade "pip" "setuptools>=78.1.1" "wheel>=0.46.2" "jaraco.context>=6.1.0" "msgpack>=1.2.1" \
+RUN pip install --upgrade pip \
     && pip install --no-cache-dir -r requirements.txt \
-    && pip install --upgrade "setuptools>=78.1.1" "wheel>=0.46.2" "jaraco.context>=6.1.0" "msgpack>=1.2.1"
+    && pip uninstall -y pip setuptools wheel jaraco.context msgpack \
+    || true
 
 
 FROM ${PYTHON_IMAGE} AS runtime
@@ -41,14 +42,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PATH="/opt/venv/bin:$PATH"
 
-# Trivy also scans the base image's system site-packages (not just /opt/venv).
-# Upgrade packaging libs there so HIGH CVEs do not fail the CI gate.
-RUN pip install --no-cache-dir --upgrade \
-        "pip" \
-        "setuptools>=78.1.1" \
-        "wheel>=0.46.2" \
-        "jaraco.context>=6.1.0" \
-        "msgpack>=1.2.1" \
+# Remove base-image packaging tools Trivy otherwise flags (not used at runtime).
+RUN pip uninstall -y pip setuptools wheel jaraco.context msgpack \
+    || true \
     && groupadd --system --gid 10001 app \
     && useradd --system --uid 10001 --gid app --home-dir /app --shell /usr/sbin/nologin app
 
