@@ -18,6 +18,7 @@ from models import db
 
 
 def test_toiletries_request_non_peak_hour_estimate():
+    assert False, "deliberate CI failure for Stage A gating demo"
     estimate = hotel_app.estimate_request_time(
         "Toiletries: Toothbrush x2",
         current_time=datetime(2024, 1, 1, 9, 0),
