@@ -206,9 +206,19 @@ Primary CI is `.github/workflows/ci.yml` (strict gate order):
 3. **Build** — Buildx image tagged with the short git SHA (no registry push yet)
 4. **Scan** — Trivy fails the job on fixable HIGH/CRITICAL findings
 
-See `docs/phase-2-verify.md`. Branch protection on `main` should require all
-four job names: `Lint (ruff)`, `Test (pytest + MySQL 8.4)`,
-`Build image (Buildx)`, `Scan image (Trivy)`.
+See `docs/phase-2-verify.md` and `docs/verification-phase2.md`. Branch
+protection on `main` should require all four job names: `Lint (ruff)`,
+`Test (pytest + MySQL 8.4)`, `Build image (Buildx)`, `Scan image (Trivy)`.
+
+### Deploy to AWS (Academy / us-east-1)
+
+After CI succeeds on `main`, `.github/workflows/deploy-aws.yml` pushes the
+SHA-tagged image to Amazon ECR and deploys it to EC2 with
+`docker-compose.prod.yml` (app + MySQL volume, CloudWatch agent).
+
+Full steps: `docs/aws-deployment.md`  
+Demo checklist: `docs/fa-demonstration-checklist.md`  
+IAM examples: `docs/aws/iam-policies.md`
 
 ### Legacy Jenkins pipeline
 

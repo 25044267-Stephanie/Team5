@@ -99,3 +99,12 @@ Expected: `All checks passed!`
 | Full CI > 10 minutes cold | Keep a pre-recorded green run; GHA cache warms Buildx |
 | Trivy fails on a new CVE the day of demo | Show the failing job as the DevSecOps control working; fix by bumping base digest on a hotfix branch |
 | MySQL service slow to healthy | Retries=30 in workflow; re-run job |
+
+## Stage B (AWS) — next after you commit these files
+
+Full guide: [`docs/aws-deployment.md`](aws-deployment.md)  
+Proof table: [`docs/verification-phase2.md`](verification-phase2.md)  
+Viva checklist: [`docs/fa-demonstration-checklist.md`](fa-demonstration-checklist.md)
+
+CD workflow (separate from CI): `.github/workflows/deploy-aws.yml`  
+Runs only after green **CI** on `main`, pushes a SHA-tagged image to ECR, deploys to EC2 over SSH.

@@ -1,0 +1,76 @@
+# Production Compose for Amazon EC2 (AWS Academy / us-east-1).
+#
+# WHY:
+# - App image is pulled from ECR via APP_IMAGE (immutable Git SHA tag).
+#   EC2 never builds from source — that keeps prod identical to the CI image.
+# - MySQL stays on the Compose network only (no host publish of 3306).
+# - json-file log rotation prevents disk fill; CloudWatch agent / awslogs
+#   ship stdout without putting secrets in the agent config.
+# - Local `docker compose up` is unchanged (base + override). Use:
+#     docker compose -f docker-compose.prod.yml --env-file .env up -d
+
+name: c270-hotel-prod
+
+services:
+  db:
+    image: mysql:8.4@sha256:b3b90af2a6552ae30c266fdb7d5dd55f3afb72404bb78d37fe8a23eb857fd3fb
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-hotel_management}
+      MYSQL_USER: ${MYSQL_USER:-hotel_app}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?Set MYSQL_PASSWORD in server .env}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Set MYSQL_ROOT_PASSWORD in server .env}
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    # Intentionally NOT publishing 3306 to the host / internet.
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+        tag: "{{.Name}}"
+
+  app:
+    image: ${APP_IMAGE:?Set APP_IMAGE to the ECR URI with immutable SHA tag}
+    restart: unless-stopped
+    ports:
+      - "5050:5050"
+    environment:
+      FLASK_SECRET_KEY: ${FLASK_SECRET_KEY:?Set FLASK_SECRET_KEY in server .env}
+      MYSQL_HOST: db
+      MYSQL_PORT: "3306"
+      MYSQL_USER: ${MYSQL_USER:-hotel_app}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?Set MYSQL_PASSWORD in server .env}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-hotel_management}
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5050/healthz', timeout=4)",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+        tag: "{{.Name}}"
+
+volumes:
+  mysql-data:
+    name: c270-hotel-mysql-data

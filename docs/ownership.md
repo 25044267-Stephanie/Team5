@@ -11,7 +11,9 @@ Percentages and feature work come from the project presentation slides.
 | `Dockerfile`, compose files, `.dockerignore`, `/healthz` | Stephanie Ong | Core — Containerisation |
 | `requirements*.txt`, `pyproject.toml` | Stephanie Ong | CA2 + Core CI |
 | `.github/workflows/ci.yml` | Stephanie Ong | Core — CI/CD |
+| `.github/workflows/deploy-aws.yml`, `docker-compose.prod.yml`, `scripts/aws/*` | Stephanie Ong | Core — Deployment |
 | Trivy HIGH/CRITICAL gate (in CI) | Stephanie Ong | Initiative — DevSecOps |
+| CloudWatch agent + alarm scripts | Stephanie Ong | Initiative — Observability |
 | `docs/*` ledgers & verification guides | Stephanie Ong | Individual understanding |
-| `ansible/` (Phase 4) | TBD | Core — IaC |
+| `ansible/` (optional later) | TBD | Core — IaC |
 | `Jenkinsfile` | Legacy — not demo path | CA2 narrative only |

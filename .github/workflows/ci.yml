@@ -13,7 +13,8 @@
 # - Trivy fails the job on HIGH/CRITICAL (Initiative / DevSecOps evidence).
 #   ignore-unfixed avoids failing on CVEs with no upstream fix.
 # - Actions pinned by commit SHA for supply-chain integrity.
-# - No long-lived AWS keys here. Deploy workflow is out of scope for Stage A.
+# - No long-lived AWS keys here. CD is `.github/workflows/deploy-aws.yml`
+#   (ECR + EC2) and must not run unless this workflow succeeds on main.
 
 name: CI
 

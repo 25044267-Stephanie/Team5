@@ -3,6 +3,13 @@
 *.env
 !.env.example
 Team5_HotelManagement_Project.env
+*.pem
+*.key
+id_rsa
+id_ed25519
+
+# EC2 deploy state (records previous/current APP_IMAGE URIs only — still local).
+state/
 
 __pycache__/
 *.pyc

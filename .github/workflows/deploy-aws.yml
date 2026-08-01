@@ -1,0 +1,179 @@
+# CD — push SHA-tagged image to ECR and deploy to EC2 (after CI on main).
+#
+# WHY:
+# - Separate from ci.yml so the CI gate stays readable for the FA demo.
+# - Runs only when the CI workflow on main completes successfully
+#   (lint → test → build → Trivy already passed on that commit).
+# - Rebuilds from the exact commit SHA (CI does not push to ECR yet; reusing
+#   a private image artifact across workflows is less portable than rebuilding
+#   the same Dockerfile at the same SHA).
+# - OIDC preferred; Academy may require temporary lab keys in the
+#   `production` GitHub Environment only.
+# - SSH deploy selected for Academy reliability (SSM often blocked).
+
+name: Deploy AWS
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      git_sha:
+        description: "Commit SHA to deploy (default: current main HEAD)"
+        required: false
+        default: ""
+
+concurrency:
+  group: deploy-aws-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+  ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY || 'c270-hotel-management' }}
+  IMAGE_NAME: c270-hotel-management
+
+jobs:
+  guard:
+    name: Require green CI on main
+    runs-on: ubuntu-24.04
+    outputs:
+      deploy_sha: ${{ steps.sha.outputs.sha }}
+    steps:
+      - name: Reject failed CI workflow_run
+        if: github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'success'
+        run: |
+          echo "CI conclusion was ${{ github.event.workflow_run.conclusion }} — refusing deploy."
+          exit 1
+
+      - name: Resolve deploy SHA
+        id: sha
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_run" ]; then
+            echo "sha=${{ github.event.workflow_run.head_sha }}" >> "$GITHUB_OUTPUT"
+          elif [ -n "${{ inputs.git_sha }}" ]; then
+            echo "sha=${{ inputs.git_sha }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "sha=${{ github.sha }}" >> "$GITHUB_OUTPUT"
+          fi
+
+  build-push:
+    name: Build and push ECR image
+    needs: guard
+    runs-on: ubuntu-24.04
+    environment: production
+    outputs:
+      image_uri: ${{ steps.meta.outputs.uri }}
+      short_sha: ${{ steps.meta.outputs.short_sha }}
+    steps:
+      - name: Checkout exact commit
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ needs.guard.outputs.deploy_sha }}
+
+      # Set GitHub variable AWS_AUTH_MODE=oidc (preferred) or academy_keys (lab fallback).
+      - name: Configure AWS via OIDC (preferred)
+        if: ${{ vars.AWS_AUTH_MODE != 'academy_keys' }}
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Configure AWS via Academy temporary keys (fallback)
+        if: ${{ vars.AWS_AUTH_MODE == 'academy_keys' }}
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@d539f0932e70871a027e9d5a9d8fc38589180a64 # v2
+
+      - name: Image metadata
+        id: meta
+        run: |
+          SHORT_SHA="$(echo '${{ needs.guard.outputs.deploy_sha }}' | cut -c1-7)"
+          REGISTRY="${{ steps.ecr.outputs.registry }}"
+          URI="${REGISTRY}/${{ env.ECR_REPOSITORY }}:${SHORT_SHA}"
+          echo "short_sha=${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+          echo "uri=${URI}" >> "$GITHUB_OUTPUT"
+          echo "Deploy image: ${URI}"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      - name: Build and push SHA-tagged image
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: |
+            ${{ steps.meta.outputs.uri }}
+          cache-from: type=gha,scope=hotel-app-deploy
+          cache-to: type=gha,mode=max,scope=hotel-app-deploy
+
+  deploy:
+    name: Deploy to EC2 over SSH
+    needs: [guard, build-push]
+    runs-on: ubuntu-24.04
+    environment: production
+    steps:
+      - name: Checkout deploy helpers
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ needs.guard.outputs.deploy_sha }}
+
+      - name: Copy compose + scripts to EC2
+        uses: appleboy/scp-action@917f8b81dfc1ccd331fef9e2d61bdc6c8be94634 # v0.1.7
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+          source: "docker-compose.prod.yml,database/,scripts/aws/,cloudwatch/"
+          target: "/opt/c270-hotel-management"
+          overwrite: true
+
+      - name: Remote deploy exact APP_IMAGE
+        uses: appleboy/ssh-action@7eaf76671a0d7eec5d98ee897acda4f968735a17 # v1.2.0
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+          script: |
+            set -Eeuo pipefail
+            cd /opt/c270-hotel-management
+            test -f .env
+            # Update APP_IMAGE only (do not echo .env).
+            IMG='${{ needs.build-push.outputs.image_uri }}'
+            if grep -q '^APP_IMAGE=' .env; then
+              awk -v img="$IMG" 'BEGIN{d=0} /^APP_IMAGE=/{print "APP_IMAGE=" img; d=1; next} {print} END{if(!d) print "APP_IMAGE=" img}' .env > .env.tmp
+              mv .env.tmp .env
+            else
+              echo "APP_IMAGE=${IMG}" >> .env
+            fi
+            bash scripts/aws/deploy.sh
+
+      - name: Public smoke test /healthz
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+        run: |
+          set -Eeuo pipefail
+          # Classroom demo exposes 5050; fail the job if unhealthy.
+          for i in 1 2 3 4 5 6 7 8 9 10; do
+            if curl -fsS "http://${EC2_HOST}:5050/healthz" | tee /tmp/healthz.json; then
+              grep -q '"status":"ok"' /tmp/healthz.json
+              exit 0
+            fi
+            sleep 6
+          done
+          echo "Public /healthz smoke test failed"
+          exit 1

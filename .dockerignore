@@ -20,5 +20,9 @@ package-lock.json
 render.yaml
 docker-compose.yml
 docker-compose.override.yml
+docker-compose.prod.yml
+.github
+cloudwatch
+docs
 *.md
 .claude
