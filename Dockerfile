@@ -28,9 +28,9 @@ COPY requirements.txt ./
 # Upgrade packaging tools after the venv exists so Trivy does not fail the
 # CI gate on known-fixed HIGH CVEs in older wheel/jaraco.context metadata
 # that ship with a stock pip bootstrap (Plan A — fix, do not ignore).
-RUN pip install --upgrade pip setuptools "wheel>=0.46.2" "jaraco.context>=6.1.0" \
+RUN pip install --upgrade "pip" "setuptools>=78.1.1" "wheel>=0.46.2" "jaraco.context>=6.1.0" "msgpack>=1.2.1" \
     && pip install --no-cache-dir -r requirements.txt \
-    && pip install --upgrade "wheel>=0.46.2" "jaraco.context>=6.1.0"
+    && pip install --upgrade "setuptools>=78.1.1" "wheel>=0.46.2" "jaraco.context>=6.1.0" "msgpack>=1.2.1"
 
 
 FROM ${PYTHON_IMAGE} AS runtime
@@ -41,7 +41,15 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PATH="/opt/venv/bin:$PATH"
 
-RUN groupadd --system --gid 10001 app \
+# Trivy also scans the base image's system site-packages (not just /opt/venv).
+# Upgrade packaging libs there so HIGH CVEs do not fail the CI gate.
+RUN pip install --no-cache-dir --upgrade \
+        "pip" \
+        "setuptools>=78.1.1" \
+        "wheel>=0.46.2" \
+        "jaraco.context>=6.1.0" \
+        "msgpack>=1.2.1" \
+    && groupadd --system --gid 10001 app \
     && useradd --system --uid 10001 --gid app --home-dir /app --shell /usr/sbin/nologin app
 
 COPY --from=builder /opt/venv /opt/venv
