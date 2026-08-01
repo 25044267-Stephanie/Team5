@@ -30,9 +30,15 @@ git status
 
 ```powershell
 git commit -m "ci: add GitHub Actions lint, test, build, and Trivy gate"
-git remote add origin https://github.com/YOUR_USER/YOUR_REPO.git
+git remote add origin https://github.com/25044267-Stephanie/Team5_HotelManagement_Project.git
 git push -u origin main
 ```
+
+Team remote (already wired locally):  
+https://github.com/25044267-Stephanie/Team5_HotelManagement_Project  
+
+CI branch pushed: `devops/ci-pipeline`  
+Open PR: https://github.com/25044267-Stephanie/Team5_HotelManagement_Project/pull/new/devops/ci-pipeline
 
 5. GitHub → **Settings → Branches → Add branch protection rule** for `main`:
    - Require a pull request before merging
