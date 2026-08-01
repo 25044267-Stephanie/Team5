@@ -42,9 +42,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PATH="/opt/venv/bin:$PATH"
 
-# Remove base-image packaging tools Trivy otherwise flags (not used at runtime).
-RUN pip uninstall -y pip setuptools wheel jaraco.context msgpack \
-    || true \
+# DELIBERATE Trivy demo — known HIGH CVE setuptools pin (revert after demo).
+RUN pip install --no-cache-dir "setuptools==70.3.0" \
     && groupadd --system --gid 10001 app \
     && useradd --system --uid 10001 --gid app --home-dir /app --shell /usr/sbin/nologin app
 
