@@ -1,16 +1,17 @@
 # Component ownership map
 
-Every file created for FA DevOps work must map to exactly one owner.
-Fill names before the demo. Until then owners are `TBD`.
+Every FA DevOps / app component maps to exactly one owner.
+Percentages and feature work come from the project presentation slides.
 
 | Component / path | Owner | Assessed under |
 |---|---|---|
-| `Dockerfile`, compose files, `.dockerignore` | TBD | Core — Containerisation |
-| `app.py` `/healthz` | TBD | Core — Deployment readiness |
-| `requirements.txt`, `requirements-dev.txt`, `pyproject.toml` | TBD | CA2 + Core CI |
-| `.github/workflows/ci.yml` | TBD | Core — CI/CD (+ Trivy in Initiative) |
-| `docs/phase-1-verify.md`, `docs/phase-2-verify.md` | TBD | Individual understanding |
-| `docs/CHANGELOG-FA.md` | TBD | CA2 |
-| `docs/core-requirements.md` / `initiative.md` | TBD | Ledgers |
-| `ansible/` | TBD | Core — IaC (Phase 4) |
+| Main integration, login / role portals, special requests, testing & UI debug | Stephanie Ong (`25044267-Stephanie`) — Member 1 (50%) | Individual + Core |
+| Room catalogue; room add/edit/delete; admin room pages; room images; booking-form & room validation support | AhmadAkmalRP — Member 2 (30%) | Individual |
+| Booking list/management; check-in/out; booking↔room status; guest vs admin booking views; selected booking tests | 25043549-Daniel — Member 3 (15%) | Individual |
+| `Dockerfile`, compose files, `.dockerignore`, `/healthz` | Stephanie Ong | Core — Containerisation |
+| `requirements*.txt`, `pyproject.toml` | Stephanie Ong | CA2 + Core CI |
+| `.github/workflows/ci.yml` | Stephanie Ong | Core — CI/CD |
+| Trivy HIGH/CRITICAL gate (in CI) | Stephanie Ong | Initiative — DevSecOps |
+| `docs/*` ledgers & verification guides | Stephanie Ong | Individual understanding |
+| `ansible/` (Phase 4) | TBD | Core — IaC |
 | `Jenkinsfile` | Legacy — not demo path | CA2 narrative only |
