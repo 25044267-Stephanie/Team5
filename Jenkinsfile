@@ -9,6 +9,8 @@ pipeline {
         timestamps()
         disableConcurrentBuilds()
         buildDiscarder(logRotator(numToKeepStr: '20'))
+        // Explicit Checkout stage records Git SHA / image tag; skip SCM auto-checkout.
+        skipDefaultCheckout(true)
     }
 
     parameters {
@@ -42,6 +44,8 @@ pipeline {
         MYSQL_PASSWORD = 'hotel_test_password'
         MYSQL_ROOT_PASSWORD = 'ci-root-password'
         COMPOSE_PROJECT_NAME = 'c270hotelci'
+        // Guard automatic rollback: only true after deploy mutates the app host.
+        DEPLOYMENT_STARTED = 'false'
     }
 
     stages {
@@ -318,15 +322,18 @@ PY'
                 }
             }
             steps {
-                sh '''#!/bin/bash
-                    set -euo pipefail
-                    chmod +x scripts/aws/resolve_app_host.sh
-                    APP_HOST="$(AWS_REGION="${AWS_REGION}" C270_APP_INSTANCE_NAME="${APP_INSTANCE_NAME}" \
-                      bash scripts/aws/resolve_app_host.sh)"
-                    test -n "${APP_HOST}"
-                    echo "${APP_HOST}" | tee artifacts/app_host.txt
-                    mkdir -p ansible
-                    cat > ansible/hosts.jenkins.ini <<EOF
+                script {
+                    def host = sh(
+                        returnStdout: true,
+                        script: '''#!/bin/bash
+                            set -euo pipefail
+                            mkdir -p artifacts ansible
+                            chmod +x scripts/aws/resolve_app_host.sh
+                            APP_HOST="$(AWS_REGION="${AWS_REGION}" C270_APP_INSTANCE_NAME="${APP_INSTANCE_NAME}" \
+                              bash scripts/aws/resolve_app_host.sh)"
+                            test -n "${APP_HOST}"
+                            echo "${APP_HOST}" | tee artifacts/app_host.txt
+                            cat > ansible/hosts.jenkins.ini <<EOF
 [hotel_app]
 ${APP_HOST}
 
@@ -336,8 +343,12 @@ ansible_ssh_private_key_file={{ lookup('env','SSH_KEY') }}
 ansible_python_interpreter=/usr/bin/python3
 ansible_ssh_common_args=-o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new
 EOF
-                    echo "Resolved application host dynamically (not stored in Git)."
-                '''
+                            echo "Resolved application host dynamically (not stored in Git)."
+                            printf '%s' "${APP_HOST}"
+                        '''
+                    ).trim()
+                    env.APP_HOST = host
+                }
             }
         }
 
@@ -370,6 +381,9 @@ EOF
                           "cd '${APP_DIR}' && (grep -E '^APP_IMAGE=' .env | cut -d= -f2- || true)")"
                         set -x
                         echo "${PREV}" | tee artifacts/previous_image.txt
+                        # Mark deployment started only after rollback context is recorded and
+                        # immediately before remote app/env mutation begins.
+                        echo "true" > artifacts/deployment_started.txt
 
                         # Ensure demo seed passwords exist on host without printing values.
                         # Never set SEED_USER_PASSWORD on production.
@@ -594,7 +608,27 @@ PY
         }
         failure {
             script {
-                if (params.DEPLOY_TO_AWS && !params.ROLLBACK_ONLY) {
+                def deploymentStarted = (env.DEPLOYMENT_STARTED == 'true') ||
+                    fileExists('artifacts/deployment_started.txt')
+                def hostReady = fileExists('artifacts/app_host.txt')
+                def previousReady = fileExists('artifacts/previous_image.txt')
+                if (deploymentStarted) {
+                    env.DEPLOYMENT_STARTED = 'true'
+                }
+                if (hostReady) {
+                    env.APP_HOST = readFile('artifacts/app_host.txt').trim()
+                }
+                if (previousReady) {
+                    env.PREVIOUS_IMAGE = readFile('artifacts/previous_image.txt').trim()
+                }
+
+                def canRollback = params.DEPLOY_TO_AWS &&
+                    !params.ROLLBACK_ONLY &&
+                    env.DEPLOYMENT_STARTED == 'true' &&
+                    (env.APP_HOST ?: '').trim() &&
+                    (env.PREVIOUS_IMAGE ?: '').trim()
+
+                if (canRollback) {
                     echo "Deploy failed — attempting automatic app-only rollback (MySQL volume preserved)."
                     try {
                         withCredentials([
@@ -606,16 +640,8 @@ PY
                         ]) {
                             sh '''#!/bin/bash
                                 set -euo pipefail
-                                if [ ! -f artifacts/app_host.txt ] || [ ! -f artifacts/previous_image.txt ]; then
-                                  echo "Insufficient rollback context; manual rollback required."
-                                  exit 0
-                                fi
-                                APP_HOST="$(cat artifacts/app_host.txt)"
+                                APP_HOST="$(tr -d '[:space:]' < artifacts/app_host.txt)"
                                 PREV="$(tr -d '[:space:]' < artifacts/previous_image.txt)"
-                                if [ -z "${PREV}" ]; then
-                                  echo "No previous image recorded."
-                                  exit 0
-                                fi
                                 ssh -i "$SSH_KEY" -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new \
                                   "${SSH_USER}@${APP_HOST}" \
                                   "set -euo pipefail
@@ -644,6 +670,8 @@ PY
                     } catch (err) {
                         echo "Automatic rollback encountered an error: ${err}"
                     }
+                } else {
+                    echo "Pipeline failed before deployment; rollback is not required."
                 }
                 echo "Pipeline failed. Do NOT delete the MySQL volume. Known rollback tag: manual-20260802-160243"
             }
