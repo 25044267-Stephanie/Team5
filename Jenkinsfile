@@ -247,19 +247,47 @@ PY'
                 sh '''#!/bin/bash
                     set -euo pipefail
                     mkdir -p reports
-                    # Gate: fail on HIGH/CRITICAL. Document unfixed base CVEs in reports/trivy-ignore.md when needed.
-                    if command -v trivy >/dev/null 2>&1; then
-                      trivy image --exit-code 1 --severity HIGH,CRITICAL \
-                        --format table -o reports/trivy.txt \
-                        "${LOCAL_IMAGE}" || { cat reports/trivy.txt; exit 1; }
-                    else
-                      docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
-                        -v "$PWD/reports:/reports" aquasec/trivy:0.56.2 \
-                        image --exit-code 1 --severity HIGH,CRITICAL \
-                        --format table -o /reports/trivy.txt \
-                        "${LOCAL_IMAGE}" || { cat reports/trivy.txt; exit 1; }
-                    fi
-                    echo "Trivy HIGH/CRITICAL gate passed" | tee -a reports/trivy.txt
+                    # Two-part policy (see docs/trivy-security-policy.md):
+                    # A) Full audit report — fixed + unfixed (evidence; exit 0)
+                    # B) Enforcement gate — fixable HIGH/CRITICAL only (exit 1)
+                    # C) Secret gate — any detected secret fails the build
+                    run_trivy() {
+                      # usage: run_trivy <extra trivy args...>
+                      if command -v trivy >/dev/null 2>&1; then
+                        trivy image "$@"
+                      else
+                        docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+                          -v "$PWD/reports:/reports" aquasec/trivy:0.56.2 \
+                          image "$@"
+                      fi
+                    }
+
+                    echo "=== Trivy full audit (fixed + unfixed) ==="
+                    run_trivy --scanners vuln --severity HIGH,CRITICAL \
+                      --exit-code 0 --format table -o reports/trivy-full.txt \
+                      "${LOCAL_IMAGE}"
+                    cp reports/trivy-full.txt reports/trivy.txt
+                    echo "Full audit archived: reports/trivy-full.txt"
+
+                    echo "=== Trivy fixable HIGH/CRITICAL gate ==="
+                    run_trivy --scanners vuln --ignore-unfixed --severity HIGH,CRITICAL \
+                      --exit-code 1 --format table -o reports/trivy-gate.txt \
+                      "${LOCAL_IMAGE}" || {
+                        echo "BLOCKED: fixable HIGH/CRITICAL vulnerabilities found." >&2
+                        cat reports/trivy-gate.txt >&2 || true
+                        exit 1
+                      }
+                    echo "Fixable HIGH/CRITICAL gate passed" | tee -a reports/trivy-gate.txt
+
+                    echo "=== Trivy secret gate ==="
+                    run_trivy --scanners secret \
+                      --exit-code 1 --format table -o reports/trivy-secrets.txt \
+                      "${LOCAL_IMAGE}" || {
+                        echo "BLOCKED: secret(s) detected in image." >&2
+                        cat reports/trivy-secrets.txt >&2 || true
+                        exit 1
+                      }
+                    echo "Secret gate passed" | tee -a reports/trivy-secrets.txt
                 '''
             }
         }
