@@ -16,7 +16,9 @@ load_dotenv()
 # one — this must happen before `app`/`config`/`models` are imported by
 # anything (including test_app.py's `import app as hotel_app`), since
 # config.py reads MYSQL_DATABASE exactly once at import time.
-os.environ["MYSQL_DATABASE"] = os.environ.get("MYSQL_TEST_DATABASE", "hotel_management_test")
+os.environ["MYSQL_DATABASE"] = os.environ.get(
+    "MYSQL_TEST_DATABASE", "c270_hotel_management_test"
+)
 
 import pytest
 from werkzeug.security import generate_password_hash

@@ -9,7 +9,8 @@
 __pycache__
 *.pyc
 *.pyo
-data.json
+# data.json MUST be in the image so EC2/ECR can run idempotent room migrate.
+# data.json.bak is an incomplete stub (3 sample rooms) — never ship it.
 data.json.bak
 tests
 ansible
@@ -21,8 +22,11 @@ render.yaml
 docker-compose.yml
 docker-compose.override.yml
 docker-compose.prod.yml
+docker-compose.prod.mysql-fallback.yml
 .github
 cloudwatch
-docs
+reports
+backups
 *.md
 .claude
+.vscode
