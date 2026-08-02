@@ -89,6 +89,13 @@ rooms = json.load(open("data.json", encoding="utf-8")).get("rooms") or []
 assert len(rooms) == 25, f"data.json must contain 25 rooms, found {len(rooms)}"
 print("Validated data.json room source:", len(rooms))
 PY
+                    # Compose ${VAR:?} requires values for `config` only.
+                    # Disposable CI placeholders — not used for AWS deploy (deploy uses Jenkins credentials).
+                    export SEED_ADMIN_PASSWORD="${SEED_ADMIN_PASSWORD:-ci-validate-only}"
+                    export SEED_USER_PASSWORD="${SEED_USER_PASSWORD:-ci-validate-only}"
+                    export SEED_STEPH_PASSWORD="${SEED_STEPH_PASSWORD:-ci-validate-only}"
+                    export COMPOSE_MYSQL_DATABASE="${COMPOSE_MYSQL_DATABASE:-${MYSQL_DATABASE}}"
+                    export MYSQL_TEST_DATABASE="${MYSQL_TEST_DATABASE:-c270_hotel_management_test}"
                     docker compose -f docker-compose.yml config >/dev/null
                     echo "Workspace validation OK"
                 '''
