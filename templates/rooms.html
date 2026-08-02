@@ -36,7 +36,7 @@
                     <span class="tag">Our Accommodations</span>
                     <h1>Hotel Rooms</h1>
                 </div>
-                
+
                 <div style="display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap;">
                     <form method="GET" action="/rooms" style="display: flex; gap: 0.5rem; align-items: center;">
                         <select name="room_type" style="padding: 0.6rem 0.8rem; border-radius: 999px; border: 1px solid #d1d5db;">
@@ -73,21 +73,22 @@
             {% if rooms %}
                 <div class="rooms-grid">
                     {% for room in rooms %}
+                        {% set room_number_int = room.room_number|int %}
+                        {% set is_seed_room = room_number_int in seed_room_numbers %}
                         <div class="card room-card reveal" data-room-id="{{ room.id }}" data-status="{{ room.status }}">
                             <div class="card-image" style="padding: 0; overflow: hidden;">
-                                {% if room.get('image') %}
-                                    <img src="{{ room.image }}" alt="Room {{ room.room_number }}" style="width: 100%; height: 220px; object-fit: cover; display: block;">
-                                {% else %}
-                                    <div style="background: linear-gradient(135deg, #e8b85a, #c9973a); display: flex; align-items: center; justify-content: center; color: white; font-size: 3rem; width: 100%; height: 220px;">
-                                        🏠
-                                    </div>
-                                {% endif %}
+                                <img
+                                    src="{{ room.image if room.get('image') else '/static/images/rooms/default-room-placeholder.png' }}"
+                                    alt="Room {{ room.room_number }}"
+                                    onerror="this.onerror=null; this.src='/static/images/rooms/default-room-placeholder.png'; this.alt='Default hotel room placeholder';"
+                                    style="width: 100%; height: 220px; object-fit: cover; display: block;"
+                                >
                             </div>
-                            
+
                             <div class="card-body">
                                 <p class="card-meta">{{ room.type }}</p>
                                 <h3 class="card-title">Room {{ room.room_number }}</h3>
-                                
+
                                 <div class="room-features">
                                     <span class="room-feature">Room #{{ room.room_number }}</span>
                                     <span class="room-feature">{{ room.type }}</span>
@@ -97,36 +98,59 @@
                                     ⭐ Earn {{ loyalty_points_per_night.get(room.type, 0) }} pts/night
                                 </p>
 
-                                <p class="card-text">Comfortable and well-equipped room with premium amenities for a pleasant stay.</p>
-                                
+                                <p class="card-text">
+                                    {% if room.type == 'Single' %}
+                                        Comfortable room designed for one guest.
+                                    {% elif room.type == 'Double' %}
+                                        Spacious room with a double bed for up to two guests.
+                                    {% else %}
+                                        Premium accommodation with a larger living area and added amenities.
+                                    {% endif %}
+                                </p>
+
                                 <div class="card-footer">
                                     <div class="card-price">
                                         <span class="amount">${{ room.price }}</span>
                                         <span class="period">/ night</span>
                                     </div>
-                                    <span class="card-status {% if room.status == 'Available' %}status-available{% elif room.status == 'Booked' %}status-booked{% else %}status-pending{% endif %}" id="status-badge-{{ room.id }}">
-                                        {{ room.status }}
+                                    <span class="card-status {% if room.status == 'Available' %}status-available{% elif room.status in ['Booked', 'Occupied'] %}status-booked{% else %}status-pending{% endif %}" id="status-badge-{{ room.id }}">
+                                        {{ 'Occupied' if room.status in ['Booked', 'Occupied'] else room.status }}
                                     </span>
                                 </div>
                             </div>
-                            
+
                             <div style="padding: 1rem 1.5rem; border-top: 1px solid var(--sand-2); display: flex; gap: 0.75rem; flex-wrap: wrap;">
                                 {% if session["role"] == "user" and room.status == "Available" %}
                                     <a href="/book/{{ room.id }}" class="btn btn-primary btn-small" style="flex: 1;">Book Now</a>
-                                {% elif session["role"] == "user" and room.status == "Booked" %}
-                                    <button disabled class="btn btn-primary btn-small" style="flex: 1; opacity: 0.5;">Booked</button>
+                                {% elif session["role"] == "user" and room.status in ["Booked", "Occupied"] %}
+                                    <button disabled class="btn btn-primary btn-small" style="flex: 1; opacity: 0.5;">Occupied</button>
                                 {% elif session["role"] == "user" %}
                                     <button disabled class="btn btn-primary btn-small" style="flex: 1; opacity: 0.5;">Under Maintenance</button>
                                 {% endif %}
-                                
+
                                 {% if session["role"] == "admin" %}
-                                    <select class="room-status-select" data-room-id="{{ room.id }}" data-previous-status="{{ room.status }}">
+                                    <select
+                                        class="room-status-select"
+                                        data-room-id="{{ room.id }}"
+                                        data-room-number="{{ room.room_number }}"
+                                        data-previous-status="{{ room.status if room.status != 'Occupied' else 'Booked' }}"
+                                        aria-label="Change status for Room {{ room.room_number }}"
+                                    >
                                         <option value="Available" {% if room.status == 'Available' %}selected{% endif %}>Available</option>
-                                        <option value="Booked" {% if room.status == 'Booked' %}selected{% endif %}>Occupied</option>
+                                        <option value="Booked" {% if room.status in ['Booked', 'Occupied'] %}selected{% endif %}>Occupied</option>
                                         <option value="Maintenance" {% if room.status == 'Maintenance' %}selected{% endif %}>Maintenance</option>
                                     </select>
-                                    <a href="/admin/rooms/edit/{{ room.id }}" class="btn btn-outline btn-small" style="flex: 1;">Edit</a>
-                                    <a href="/admin/rooms/delete/{{ room.id }}" class="btn btn-outline btn-small" onclick="return confirm('Are you sure?');" style="flex: 1;">Delete</a>
+                                    <a href="/admin/rooms/edit/{{ room.id }}" class="btn btn-outline btn-small">Edit</a>
+                                    {% if is_seed_room %}
+                                        <button type="button" class="btn btn-outline btn-small" disabled title="Seed rooms cannot be deleted. Use Maintenance instead.">Delete</button>
+                                    {% else %}
+                                        <button
+                                            type="button"
+                                            class="btn btn-outline btn-small room-delete-button"
+                                            data-room-id="{{ room.id }}"
+                                            data-room-number="{{ room.room_number }}"
+                                        >Delete</button>
+                                    {% endif %}
                                 {% endif %}
                             </div>
                         </div>
@@ -143,6 +167,23 @@
         </div>
     </section>
 
+    {% if session["role"] == "admin" %}
+    <div class="confirmation-modal" id="confirmationModal" hidden>
+        <div class="confirmation-modal-backdrop" data-modal-cancel></div>
+        <section class="confirmation-dialog" role="dialog" aria-modal="true" aria-labelledby="confirmationTitle" aria-describedby="confirmationMessage">
+            <button type="button" class="confirmation-close" data-modal-cancel aria-label="Close confirmation">&times;</button>
+            <div class="confirmation-icon" id="confirmationIcon" aria-hidden="true">?</div>
+            <h2 id="confirmationTitle">Confirm action</h2>
+            <p id="confirmationMessage"></p>
+            <div class="confirmation-actions">
+                <button type="button" class="btn btn-outline" id="confirmationCancel">CANCEL</button>
+                <button type="button" class="btn btn-primary" id="confirmationConfirm">CONFIRM</button>
+            </div>
+        </section>
+    </div>
+    <div class="room-toast" id="roomToast" role="status" aria-live="polite" aria-atomic="true"></div>
+    {% endif %}
+
     <script>
         const navbar = document.querySelector('.navbar');
         window.addEventListener('scroll', () => {
@@ -150,100 +191,227 @@
             else navbar.classList.remove('scrolled');
         });
 
-        // Reveal animation on scroll
         const observer = new IntersectionObserver((entries) => {
-            entries.forEach(entry => {
-                if (entry.isIntersecting) {
-                    entry.target.classList.add('visible');
-                }
+            entries.forEach((entry) => {
+                if (entry.isIntersecting) entry.target.classList.add('visible');
             });
         }, { threshold: 0.1 });
+        document.querySelectorAll('.reveal').forEach((element) => observer.observe(element));
 
-        document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+        const statusLabels = {
+            Available: 'Available',
+            Booked: 'Occupied',
+            Occupied: 'Occupied',
+            Maintenance: 'Maintenance',
+        };
 
-        // Status filter (admin room-availability view)
+        function normalizeFilterStatus(status) {
+            return status === 'Occupied' ? 'Booked' : status;
+        }
+
         const statusFilterBar = document.getElementById('status-filter-bar');
-        const roomCards = Array.from(document.querySelectorAll('.room-card'));
+        let roomCards = Array.from(document.querySelectorAll('.room-card'));
         const noStatusMatch = document.getElementById('no-status-match');
         let currentStatusFilter = 'All';
 
         function updateStatusCounts() {
             const counts = { All: roomCards.length, Available: 0, Booked: 0, Maintenance: 0 };
             roomCards.forEach((card) => {
-                const status = card.dataset.status;
+                const status = normalizeFilterStatus(card.dataset.status);
                 if (counts[status] !== undefined) counts[status] += 1;
             });
             Object.keys(counts).forEach((status) => {
-                const countEl = document.getElementById(`count-${status}`);
-                if (countEl) countEl.textContent = `(${counts[status]})`;
+                const countElement = document.getElementById(`count-${status}`);
+                if (countElement) countElement.textContent = `(${counts[status]})`;
             });
         }
 
         function applyStatusFilter() {
             let visibleCount = 0;
             roomCards.forEach((card) => {
-                const matches = currentStatusFilter === 'All' || card.dataset.status === currentStatusFilter;
+                const status = normalizeFilterStatus(card.dataset.status);
+                const matches = currentStatusFilter === 'All' || status === currentStatusFilter;
                 card.style.display = matches ? '' : 'none';
                 if (matches) visibleCount += 1;
             });
-            if (noStatusMatch) {
-                noStatusMatch.style.display = visibleCount === 0 ? 'block' : 'none';
-            }
+            if (noStatusMatch) noStatusMatch.style.display = visibleCount === 0 ? 'block' : 'none';
         }
 
         if (statusFilterBar) {
-            statusFilterBar.querySelectorAll('.status-filter-btn').forEach((btn) => {
-                btn.addEventListener('click', () => {
-                    currentStatusFilter = btn.dataset.statusFilter;
-                    statusFilterBar.querySelectorAll('.status-filter-btn').forEach((b) => b.classList.remove('active'));
-                    btn.classList.add('active');
+            statusFilterBar.querySelectorAll('.status-filter-btn').forEach((button) => {
+                button.addEventListener('click', () => {
+                    currentStatusFilter = button.dataset.statusFilter;
+                    statusFilterBar.querySelectorAll('.status-filter-btn').forEach((item) => item.classList.remove('active'));
+                    button.classList.add('active');
                     applyStatusFilter();
                 });
             });
         }
-
-        updateStatusCounts();
-        applyStatusFilter();
 
         function setBadgeStatus(roomId, status) {
             const badge = document.getElementById(`status-badge-${roomId}`);
             if (!badge) return;
             badge.classList.remove('status-available', 'status-booked', 'status-pending');
             if (status === 'Available') badge.classList.add('status-available');
-            else if (status === 'Booked') badge.classList.add('status-booked');
+            else if (status === 'Booked' || status === 'Occupied') badge.classList.add('status-booked');
             else badge.classList.add('status-pending');
-            badge.textContent = status;
+            badge.textContent = statusLabels[status] || status;
         }
+
+        const confirmationModal = document.getElementById('confirmationModal');
+        const confirmationTitle = document.getElementById('confirmationTitle');
+        const confirmationMessage = document.getElementById('confirmationMessage');
+        const confirmationIcon = document.getElementById('confirmationIcon');
+        const confirmationCancel = document.getElementById('confirmationCancel');
+        const confirmationConfirm = document.getElementById('confirmationConfirm');
+        const roomToast = document.getElementById('roomToast');
+        let pendingConfirmation = null;
+        let toastTimer = null;
+
+        function showToast(message, type = 'success') {
+            if (!roomToast) {
+                window.alert(message);
+                return;
+            }
+            window.clearTimeout(toastTimer);
+            roomToast.textContent = message;
+            roomToast.className = `room-toast show ${type === 'error' ? 'room-toast-error' : ''}`;
+            toastTimer = window.setTimeout(() => {
+                roomToast.classList.remove('show');
+            }, 3500);
+        }
+
+        function openConfirmation({ title, message, danger = false, onConfirm, onCancel }) {
+            if (!confirmationModal) return;
+            pendingConfirmation = { onConfirm, onCancel };
+            confirmationTitle.textContent = title;
+            confirmationMessage.textContent = message;
+            confirmationIcon.textContent = danger ? '!' : '?';
+            confirmationIcon.classList.toggle('danger', danger);
+            confirmationConfirm.classList.toggle('confirmation-danger-button', danger);
+            confirmationConfirm.disabled = false;
+            confirmationModal.hidden = false;
+            document.body.classList.add('modal-open');
+            window.setTimeout(() => confirmationCancel.focus(), 0);
+        }
+
+        function closeConfirmation({ cancelled = false } = {}) {
+            if (!confirmationModal || confirmationModal.hidden) return;
+            const current = pendingConfirmation;
+            confirmationModal.hidden = true;
+            document.body.classList.remove('modal-open');
+            pendingConfirmation = null;
+            confirmationConfirm.disabled = false;
+            if (cancelled && current?.onCancel) current.onCancel();
+        }
+
+        confirmationCancel?.addEventListener('click', () => closeConfirmation({ cancelled: true }));
+        confirmationModal?.querySelectorAll('[data-modal-cancel]').forEach((element) => {
+            element.addEventListener('click', () => closeConfirmation({ cancelled: true }));
+        });
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape' && confirmationModal && !confirmationModal.hidden) {
+                closeConfirmation({ cancelled: true });
+            }
+        });
+
+        confirmationConfirm?.addEventListener('click', async () => {
+            const current = pendingConfirmation;
+            if (!current?.onConfirm) return;
+            confirmationConfirm.disabled = true;
+            try {
+                await current.onConfirm();
+                closeConfirmation();
+            } catch (error) {
+                confirmationConfirm.disabled = false;
+            }
+        });
 
         document.querySelectorAll('.room-status-select').forEach((select) => {
             select.addEventListener('change', () => {
                 const roomId = select.dataset.roomId;
+                const roomNumber = select.dataset.roomNumber;
                 const newStatus = select.value;
                 const previousStatus = select.dataset.previousStatus;
+                const previousLabel = statusLabels[previousStatus] || previousStatus;
+                const newLabel = statusLabels[newStatus] || newStatus;
 
-                fetch(`/admin/rooms/status/${roomId}`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                    body: `status=${encodeURIComponent(newStatus)}`,
-                })
-                    .then((response) => {
-                        if (!response.ok) throw new Error('Update failed');
-                        return response.json();
-                    })
-                    .then(() => {
-                        const card = document.querySelector(`.room-card[data-room-id="${roomId}"]`);
-                        if (card) card.dataset.status = newStatus;
-                        setBadgeStatus(roomId, newStatus);
-                        select.dataset.previousStatus = newStatus;
-                        updateStatusCounts();
-                        applyStatusFilter();
-                    })
-                    .catch(() => {
-                        alert('Could not update room status. Please try again.');
+                openConfirmation({
+                    title: `Change Room ${roomNumber} status?`,
+                    message: `Change Room ${roomNumber} from ${previousLabel} to ${newLabel}?`,
+                    onCancel: () => {
                         select.value = previousStatus;
-                    });
+                    },
+                    onConfirm: async () => {
+                        select.disabled = true;
+                        try {
+                            const response = await fetch(`/admin/rooms/status/${roomId}`, {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/x-www-form-urlencoded',
+                                    'X-Requested-With': 'XMLHttpRequest',
+                                },
+                                body: `status=${encodeURIComponent(newStatus)}`,
+                            });
+                            const payload = await response.json().catch(() => ({}));
+                            if (!response.ok) throw new Error(payload.error || 'Update failed');
+
+                            const card = document.querySelector(`.room-card[data-room-id="${roomId}"]`);
+                            if (card) card.dataset.status = newStatus;
+                            setBadgeStatus(roomId, newStatus);
+                            select.dataset.previousStatus = newStatus;
+                            updateStatusCounts();
+                            applyStatusFilter();
+                            showToast(`Room ${roomNumber} status updated successfully.`);
+                        } catch (error) {
+                            select.value = previousStatus;
+                            showToast(error.message || 'Could not update the room status.', 'error');
+                            throw error;
+                        } finally {
+                            select.disabled = false;
+                        }
+                    },
+                });
             });
         });
+
+        document.querySelectorAll('.room-delete-button').forEach((button) => {
+            button.addEventListener('click', () => {
+                const roomId = button.dataset.roomId;
+                const roomNumber = button.dataset.roomNumber;
+
+                openConfirmation({
+                    title: `Delete Room ${roomNumber}?`,
+                    message: `Room ${roomNumber} will be permanently deleted. Seed rooms and rooms with booking history cannot be deleted.`,
+                    danger: true,
+                    onConfirm: async () => {
+                        button.disabled = true;
+                        try {
+                            const response = await fetch(`/admin/rooms/delete/${roomId}`, {
+                                method: 'POST',
+                                headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                            });
+                            const payload = await response.json().catch(() => ({}));
+                            if (!response.ok) throw new Error(payload.error || 'Delete failed');
+
+                            const card = document.querySelector(`.room-card[data-room-id="${roomId}"]`);
+                            if (card) card.remove();
+                            roomCards = roomCards.filter((item) => item.dataset.roomId !== roomId);
+                            updateStatusCounts();
+                            applyStatusFilter();
+                            showToast(`Room ${roomNumber} has been deleted.`);
+                        } catch (error) {
+                            button.disabled = false;
+                            showToast(error.message || 'Could not delete the room.', 'error');
+                            throw error;
+                        }
+                    },
+                });
+            });
+        });
+
+        updateStatusCounts();
+        applyStatusFilter();
     </script>
 </body>
 </html>

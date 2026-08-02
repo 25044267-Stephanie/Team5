@@ -10,10 +10,15 @@ cancellation, points award/adjust) are wrapped in a single commit with a
 rollback on failure, so a partial write can never happen.
 """
 
+import json
 from datetime import datetime
+from functools import lru_cache
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from models import Booking, Feedback, LoyaltyPoint, ReservationRequest, Room, User, db
+
+DATA_JSON_PATH = Path(__file__).resolve().parent / "data.json"
 
 SINGAPORE_TZ = ZoneInfo("Asia/Singapore")
 
@@ -175,6 +180,81 @@ def derive_room_details(room_number):
         "status": "Available",
         "image": get_room_image(room_type, number),
     }
+
+
+@lru_cache(maxsize=1)
+def get_seed_room_numbers():
+    """Permanent seed room numbers from data.json (not a DB column)."""
+    payload = json.loads(DATA_JSON_PATH.read_text(encoding="utf-8"))
+    numbers = []
+    for record in payload.get("rooms") or []:
+        try:
+            numbers.append(int(record["room_number"]))
+        except (KeyError, TypeError, ValueError):
+            continue
+    return frozenset(numbers)
+
+
+def is_seed_room_number(room_number):
+    try:
+        number = int(str(room_number).strip())
+    except (TypeError, ValueError):
+        return False
+    return number in get_seed_room_numbers()
+
+
+def room_has_booking_records(room_id):
+    count = db.session.execute(
+        db.select(db.func.count()).select_from(Booking).filter_by(room_id=room_id)
+    ).scalar_one()
+    return int(count) > 0
+
+
+def _active_booking_statuses_for_room(room_id):
+    return {
+        row[0]
+        for row in db.session.execute(
+            db.select(Booking.status).filter(
+                Booking.room_id == room_id,
+                Booking.status.in_(("Booked", "Checked In")),
+            )
+        ).all()
+    }
+
+
+def validate_manual_room_status_change(room_id, new_status):
+    """Block admin status changes that contradict active booking/check-in state."""
+    if new_status not in ALLOWED_ROOM_STATUSES:
+        return "Please select Available, Booked or Maintenance."
+    active = _active_booking_statuses_for_room(room_id)
+    if new_status == "Available" and active:
+        return (
+            "Cannot set Available while the room has an active booking. "
+            "Cancel or check out the booking first, or set Maintenance if the room needs work."
+        )
+    if new_status == "Maintenance" and "Checked In" in active:
+        return "Cannot set Maintenance while a guest is checked in."
+    return None
+
+
+def can_delete_room(room_id):
+    """Return (ok, error_message). Seed rooms and rooms with booking history are protected."""
+    room = db.session.get(Room, room_id)
+    if room is None:
+        return False, "Room not found"
+    if is_seed_room_number(room.room_number):
+        return (
+            False,
+            f"Room {room.room_number} is a permanent seed room and cannot be deleted. "
+            "Set Maintenance instead if it should be unavailable.",
+        )
+    if room_has_booking_records(room_id):
+        return (
+            False,
+            f"Room {room.room_number} has booking history and cannot be deleted. "
+            "Set Maintenance instead.",
+        )
+    return True, None
 
 
 # ---------------------------------------------------------------------
@@ -431,16 +511,26 @@ def update_room(room_id, room_number, status):
 
 @_rollback_on_error
 def delete_room(room_id):
+    """Hard-delete only when can_delete_room allows it. Returns the deleted room dict or None."""
+    ok, _error = can_delete_room(room_id)
+    if not ok:
+        return None
     room = db.session.get(Room, room_id)
-    if room is not None:
-        db.session.delete(room)
-        db.session.commit()
+    if room is None:
+        return None
+    payload = room.to_dict()
+    db.session.delete(room)
+    db.session.commit()
+    return payload
 
 
 @_rollback_on_error
 def set_room_status(room_id, status):
     room = db.session.get(Room, room_id)
     if room is None or status not in ALLOWED_ROOM_STATUSES:
+        return None
+    conflict = validate_manual_room_status_change(room_id, status)
+    if conflict:
         return None
     room.status = status
     db.session.commit()

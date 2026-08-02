@@ -307,29 +307,35 @@
         - run_deploy | bool
         - env_file.stat.exists
 
-    - name: Verify room_count is exactly 25 after deploy
+    - name: Verify seed rooms present and total rooms >= 25
       ansible.builtin.shell: |
         set -euo pipefail
         cd "{{ app_dir }}"
         docker compose --env-file .env {{ compose_files }} exec -T db \
           sh -lc 'mysql -N -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" "$MYSQL_DATABASE" -e "SELECT COUNT(*) FROM rooms;"'
+        docker compose --env-file .env {{ compose_files }} exec -T app \
+          python -c 'import app as hotel_app; from repository import get_seed_room_numbers, list_rooms; 
+ctx=hotel_app.app.app_context(); ctx.push(); seeds=set(get_seed_room_numbers()); present={int(r["room_number"]) for r in list_rooms()}; missing=sorted(seeds-present); print("SEED_PRESENT=%d" % len(seeds & present)); print("SEED_MISSING=%d" % len(missing));
+assert len(seeds)==25 and not missing, missing[:10]'
       args:
         executable: /bin/bash
       become: false
-      register: room_count_raw
+      register: room_verify_raw
       changed_when: false
       when:
         - run_deploy | bool
         - verify_rooms | bool
         - env_file.stat.exists
 
-    - name: Assert rooms inventory is complete
+    - name: Assert rooms inventory preserves 25 seeds
       ansible.builtin.assert:
         that:
-          - (room_count_raw.stdout | trim | int) == 25
+          - (room_verify_raw.stdout_lines[0] | trim | int) >= 25
+          - "'SEED_PRESENT=25' in room_verify_raw.stdout"
+          - "'SEED_MISSING=0' in room_verify_raw.stdout"
         fail_msg: >-
-          Expected room_count=25 after rooms-only migrate; got
-          {{ room_count_raw.stdout | trim }}.
+          Expected >=25 rooms with all 25 seeds present; got
+          {{ room_verify_raw.stdout }}
       when:
         - run_deploy | bool
         - verify_rooms | bool

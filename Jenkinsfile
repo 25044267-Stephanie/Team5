@@ -462,7 +462,8 @@ EOF
                         ADMINS="$(sed -n '2p' artifacts/db_verify.txt | tr -d '[:space:]')"
                         STEPHS="$(sed -n '3p' artifacts/db_verify.txt | tr -d '[:space:]')"
                         USERS="$(sed -n '4p' artifacts/db_verify.txt | tr -d '[:space:]')"
-                        test "${ROOMS}" = "25"
+                        # After Add Room, total may exceed 25; seed inventory must remain complete.
+                        test "${ROOMS}" -ge 25
                         test "${ADMINS}" = "1"
                         test "${STEPHS}" = "1"
                         # Allow existing third user; forbid unexpected growth during this deploy.

@@ -9,6 +9,15 @@ Collect screenshots / command output for each item. **Never capture passwords, P
 | Source of truth | `data.json` (25 rooms) |
 | Do **not** use | `data.json.bak` (3 stub rooms 101–103) |
 | Root cause of EC2 `room_count=0` | ECR/app image excluded `data.json`; prod Compose never ran migrate; MySQL volume already existed so `/docker-entrypoint-initdb.d` did not re-run |
+| After Add Room | total rooms **>= 25**; all **25 seed** numbers must remain; seed rooms cannot be deleted |
+
+## GitHub Actions (CI only)
+
+- [ ] Workflow `C270 CI Quality Gate` (`.github/workflows/ci.yml`)
+- [ ] Secrets `CI_SEED_ADMIN_PASSWORD` / `CI_SEED_STEPH_PASSWORD` configured
+- [ ] Green run: focused tests, full tests, Docker build, non-root, Trivy
+- [ ] Artifacts downloadable
+- [ ] `Deploy AWS` workflow is **workflow_dispatch only** (Jenkins deploys)
 
 ## Containerisation
 

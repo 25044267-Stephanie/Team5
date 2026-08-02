@@ -30,8 +30,10 @@ from repository import (
     create_reservation_request,
     create_room,
     create_user,
+    can_delete_room,
     derive_room_details,
     expire_stale_points,
+    get_seed_room_numbers,
     feedback_exists_for_booking,
     filter_bookings,
     filter_rooms_by_type,
@@ -65,6 +67,7 @@ from repository import (
     update_room,
     update_user_password,
     username_exists,
+    validate_manual_room_status_change,
 )
 
 MAX_FEEDBACK_LENGTH = 1000
@@ -325,6 +328,7 @@ def view_rooms():
         rooms=filtered_rooms,
         selected_room_type=selected_type,
         loyalty_points_per_night=LOYALTY_POINTS_PER_NIGHT,
+        seed_room_numbers=sorted(get_seed_room_numbers()),
     )
 
 
@@ -434,14 +438,32 @@ def edit_room(room_id):
     )
 
 
-@app.route("/admin/rooms/delete/<int:room_id>")
+@app.route("/admin/rooms/delete/<int:room_id>", methods=["POST"])
 def delete_room(room_id):
+    """Admin-only delete for non-seed rooms with no booking history."""
     if not admin_required():
-        return redirect(url_for("login"))
+        return jsonify({"error": "Unauthorized"}), 403
 
-    repo.delete_room(room_id)
+    room = get_room(room_id)
+    if room is None:
+        return jsonify({"error": "Room not found"}), 404
 
-    return redirect(url_for("view_rooms"))
+    ok, error = can_delete_room(room_id)
+    if not ok:
+        return jsonify({"error": error}), 409
+
+    deleted = repo.delete_room(room_id)
+    if deleted is None:
+        return jsonify({"error": "Room could not be deleted."}), 409
+
+    room_number = deleted["room_number"]
+    return jsonify(
+        {
+            "id": room_id,
+            "room_number": room_number,
+            "message": f"Room {room_number} has been deleted.",
+        }
+    )
 
 
 @app.route("/admin/rooms/status/<int:room_id>", methods=["POST"])
@@ -458,7 +480,13 @@ def update_room_status(room_id):
     if status not in ALLOWED_ROOM_STATUSES:
         return jsonify({"error": "Please select Available, Booked or Maintenance."}), 400
 
+    conflict = validate_manual_room_status_change(room_id, status)
+    if conflict:
+        return jsonify({"error": conflict}), 409
+
     updated = set_room_status(room_id, status)
+    if updated is None:
+        return jsonify({"error": "Could not update room status."}), 409
 
     return jsonify({"id": room_id, "status": updated["status"]})
 
