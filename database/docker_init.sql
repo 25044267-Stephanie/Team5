@@ -1,0 +1,11 @@
+-- Non-destructive Compose bootstrap helper.
+--
+-- The official MySQL image already creates MYSQL_DATABASE and grants
+-- MYSQL_USER access to it. Application tables are created by
+-- scripts/docker_bootstrap.py (SQLAlchemy create_all) — not by DROP-based
+-- schema.sql.
+--
+-- This file is intentionally a no-op placeholder so operators do not
+-- remount database/schema.sql (which DROP TABLEs) into
+-- /docker-entrypoint-initdb.d/ on a volume that must keep data.
+SELECT 1;

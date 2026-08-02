@@ -51,11 +51,17 @@ RUN pip uninstall -y pip setuptools wheel jaraco.context msgpack \
 COPY --from=builder /opt/venv /opt/venv
 
 # Copy only what the running app needs — not tests, ansible stubs, or .env.
+# data.json is the verified legacy room inventory for idempotent migrate on
+# empty databases (local Docker / EC2). It is never written at runtime.
 COPY --chown=app:app app.py config.py models.py repository.py ./
+COPY --chown=app:app data.json ./
 COPY --chown=app:app templates ./templates
 COPY --chown=app:app static ./static
 COPY --chown=app:app scripts ./scripts
 COPY --chown=app:app database ./database
+
+# WORKDIR was created as root; Gunicorn needs to write /.gunicorn under /app.
+RUN chown app:app /app
 
 USER app
 

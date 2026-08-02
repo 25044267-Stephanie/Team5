@@ -10,6 +10,13 @@ id_ed25519
 
 # EC2 deploy state (records previous/current APP_IMAGE URIs only — still local).
 state/
+reports/
+backups/
+
+# Ansible private inventory (may contain hostnames / key paths).
+ansible/hosts.ini
+ansible/hosts.yml
+ansible/*.retry
 
 __pycache__/
 *.pyc
