@@ -1,32 +1,25 @@
-# CD — push SHA-tagged image to ECR and deploy to EC2 (after CI on main).
+# LEGACY / MANUAL ONLY — do not auto-deploy from GitHub Actions.
 #
-# WHY:
-# - Separate from ci.yml so the CI gate stays readable for the FA demo.
-# - Runs only when the CI workflow on main completes successfully
-#   (lint → test → build → Trivy already passed on that commit).
-# - Rebuilds from the exact commit SHA (CI does not push to ECR yet; reusing
-#   a private image artifact across workflows is less portable than rebuilding
-#   the same Dockerfile at the same SHA).
-# - OIDC preferred; Academy may require temporary lab keys in the
-#   `production` GitHub Environment only.
-# - SSH deploy selected for Academy reliability (SSM often blocked).
+# Jenkins on c270-jenkins is the sole Continuous Delivery engine for ECR + EC2.
+# This workflow is retained for emergency/manual use via workflow_dispatch.
+# It is intentionally NOT triggered by push or workflow_run.
 
-name: Deploy AWS
+name: Deploy AWS (legacy manual)
 
 on:
-  workflow_run:
-    workflows: ["CI"]
-    types: [completed]
-    branches: [main]
   workflow_dispatch:
     inputs:
       git_sha:
-        description: "Commit SHA to deploy (default: current main HEAD)"
+        description: "Commit SHA to deploy (default: current branch HEAD)"
         required: false
+        default: ""
+      confirm_manual_deploy:
+        description: "Type YES to confirm this is an intentional manual deploy (Jenkins is preferred)"
+        required: true
         default: ""
 
 concurrency:
-  group: deploy-aws-production
+  group: deploy-aws-manual
   cancel-in-progress: false
 
 permissions:
@@ -40,23 +33,24 @@ env:
 
 jobs:
   guard:
-    name: Require green CI on main
+    name: Confirm intentional manual deploy
     runs-on: ubuntu-24.04
     outputs:
       deploy_sha: ${{ steps.sha.outputs.sha }}
     steps:
-      - name: Reject failed CI workflow_run
-        if: github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'success'
+      - name: Reject accidental runs
         run: |
-          echo "CI conclusion was ${{ github.event.workflow_run.conclusion }} — refusing deploy."
-          exit 1
+          set -euo pipefail
+          if [ "${{ inputs.confirm_manual_deploy }}" != "YES" ]; then
+            echo "Refusing deploy. Set confirm_manual_deploy=YES only for intentional legacy manual deploys."
+            echo "Preferred path: Jenkins pipeline on c270-jenkins."
+            exit 1
+          fi
 
       - name: Resolve deploy SHA
         id: sha
         run: |
-          if [ "${{ github.event_name }}" = "workflow_run" ]; then
-            echo "sha=${{ github.event.workflow_run.head_sha }}" >> "$GITHUB_OUTPUT"
-          elif [ -n "${{ inputs.git_sha }}" ]; then
+          if [ -n "${{ inputs.git_sha }}" ]; then
             echo "sha=${{ inputs.git_sha }}" >> "$GITHUB_OUTPUT"
           else
             echo "sha=${{ github.sha }}" >> "$GITHUB_OUTPUT"
@@ -76,7 +70,6 @@ jobs:
         with:
           ref: ${{ needs.guard.outputs.deploy_sha }}
 
-      # Set GitHub variable AWS_AUTH_MODE=oidc (preferred) or academy_keys (lab fallback).
       - name: Configure AWS via OIDC (preferred)
         if: ${{ vars.AWS_AUTH_MODE != 'academy_keys' }}
         uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4
@@ -122,7 +115,7 @@ jobs:
           cache-to: type=gha,mode=max,scope=hotel-app-deploy
 
   deploy:
-    name: Deploy to EC2 over SSH
+    name: Deploy to EC2 over SSH (legacy)
     needs: [guard, build-push]
     runs-on: ubuntu-24.04
     environment: production
@@ -138,8 +131,8 @@ jobs:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
-          source: "docker-compose.prod.yml,database/,scripts/aws/,cloudwatch/"
-          target: "/opt/c270-hotel-management"
+          source: "docker-compose.prod.yml,docker-compose.prod.mysql-fallback.yml,database/,scripts/aws/,cloudwatch/"
+          target: "/home/ec2-user/c270-hotel-management"
           overwrite: true
 
       - name: Remote deploy exact APP_IMAGE
@@ -150,9 +143,8 @@ jobs:
           key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
           script: |
             set -Eeuo pipefail
-            cd /opt/c270-hotel-management
+            cd /home/ec2-user/c270-hotel-management
             test -f .env
-            # Update APP_IMAGE only (do not echo .env).
             IMG='${{ needs.build-push.outputs.image_uri }}'
             if grep -q '^APP_IMAGE=' .env; then
               awk -v img="$IMG" 'BEGIN{d=0} /^APP_IMAGE=/{print "APP_IMAGE=" img; d=1; next} {print} END{if(!d) print "APP_IMAGE=" img}' .env > .env.tmp
@@ -167,10 +159,9 @@ jobs:
           EC2_HOST: ${{ secrets.EC2_HOST }}
         run: |
           set -Eeuo pipefail
-          # Classroom demo exposes 5050; fail the job if unhealthy.
           for i in 1 2 3 4 5 6 7 8 9 10; do
             if curl -fsS "http://${EC2_HOST}:5050/healthz" | tee /tmp/healthz.json; then
-              grep -q '"status":"ok"' /tmp/healthz.json
+              grep -Eq '"status"[[:space:]]*:[[:space:]]*"ok"' /tmp/healthz.json
               exit 0
             fi
             sleep 6

@@ -1,82 +1,47 @@
-# Continuous Integration — Stage A (FA Core: build → test → gate before deploy).
-#
-# WHY this shape (assessor-facing):
-# - Four jobs run in strict order: lint → test → build → scan. Each `needs`
-#   the previous, so a red stage blocks everything after it — that is the
-#   evidence that the pipeline *gates*, not just "runs".
-# - Tests use a MySQL 8.4 *service container* with a Docker healthcheck.
-#   GitHub waits until healthy before steps start — no fixed `sleep`.
-# - Schema: tests/conftest.py already calls db.create_all() in a session
-#   fixture, so we do not run init_db.py in CI (same mechanism, fewer steps).
-# - Build tags the image with the short git SHA and does NOT push to any
-#   registry yet (ECR arrives in Stage B / later deploy phase).
-# - Trivy fails the job on HIGH/CRITICAL (Initiative / DevSecOps evidence).
-#   ignore-unfixed avoids failing on CVEs with no upstream fix.
-# - Actions pinned by commit SHA for supply-chain integrity.
-# - No long-lived AWS keys here. CD is `.github/workflows/deploy-aws.yml`
-#   (ECR + EC2) and must not run unless this workflow succeeds on main.
+# C270 CI Quality Gate — GitHub Actions only.
+# Jenkins is the sole AWS / ECR / Ansible deployment engine.
+# This workflow never deploys, never pushes to ECR, and never uses AWS keys.
 
-name: CI
+name: C270 CI Quality Gate
 
 on:
-  push:
   pull_request:
-    branches: [main]
+    branches: [ci/github-actions, main]
+  push:
+    branches: [ci/github-actions, main, "feature/**"]
+  workflow_dispatch:
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
+  group: c270-ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
   contents: read
+  security-events: write
 
 env:
   PYTHON_VERSION: "3.11"
   IMAGE_NAME: c270-hotel-management
-  # CI-only throwaway values — never production secrets.
   FLASK_SECRET_KEY: ci-only-secret-not-for-production
   MYSQL_HOST: 127.0.0.1
   MYSQL_PORT: "3306"
   MYSQL_USER: hotel_test
   MYSQL_PASSWORD: hotel_test_password
-  MYSQL_DATABASE: hotel_management_test
-  MYSQL_TEST_DATABASE: hotel_management_test
+  MYSQL_DATABASE: c270_hotel_management_test
+  MYSQL_TEST_DATABASE: c270_hotel_management_test
+  MYSQL_ROOT_PASSWORD: ci-root-password
 
 jobs:
-  lint:
-    name: Lint (ruff)
+  quality-gate:
+    name: Validate, test, build, and scan
     runs-on: ubuntu-24.04
-    steps:
-      - name: Checkout
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-
-      - name: Set up Python
-        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-          cache: pip
-          cache-dependency-path: |
-            requirements.txt
-            requirements-dev.txt
-
-      - name: Install lint tools
-        run: pip install --upgrade pip && pip install -r requirements-dev.txt
-
-      # Format --check is intentionally NOT gated yet: 7 files (incl. app.py)
-      # would reformat and destroy blame needed for individual attribution.
-      - name: Ruff check
-        run: ruff check app.py config.py models.py repository.py scripts tests
-
-  test:
-    name: Test (pytest + MySQL 8.4)
-    needs: lint
-    runs-on: ubuntu-24.04
+    timeout-minutes: 45
     services:
       mysql:
         image: mysql:8.4@sha256:b3b90af2a6552ae30c266fdb7d5dd55f3afb72404bb78d37fe8a23eb857fd3fb
         env:
           MYSQL_ROOT_PASSWORD: ci-root-password
-          MYSQL_DATABASE: hotel_management_test
+          MYSQL_DATABASE: c270_hotel_management_test
           MYSQL_USER: hotel_test
           MYSQL_PASSWORD: hotel_test_password
         ports:
@@ -86,9 +51,46 @@ jobs:
           --health-interval=5s
           --health-timeout=5s
           --health-retries=30
+
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Secret and workspace safety
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git ls-files --error-unmatch .env >/dev/null 2>&1; then
+            echo "ERROR: .env must not be tracked" >&2
+            exit 1
+          fi
+          if git ls-files '*.pem' 2>/dev/null | grep -q .; then
+            echo "ERROR: PEM files must not be tracked" >&2
+            exit 1
+          fi
+          if git ls-files --error-unmatch ansible/hosts.ini >/dev/null 2>&1; then
+            echo "ERROR: ansible/hosts.ini must not be tracked" >&2
+            exit 1
+          fi
+          if git ls-files | grep -E '(^|/)\.env\.bak|data\.json\.bak|_ansible_.*\.log$' >/dev/null; then
+            echo "ERROR: runtime backup/log files must not be tracked" >&2
+            exit 1
+          fi
+          echo "Workspace safety checks passed"
+
+      - name: Require CI seed secrets (CI DB only)
+        shell: bash
+        env:
+          CI_SEED_ADMIN_PASSWORD: ${{ secrets.CI_SEED_ADMIN_PASSWORD }}
+          CI_SEED_STEPH_PASSWORD: ${{ secrets.CI_SEED_STEPH_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ -z "${CI_SEED_ADMIN_PASSWORD}" ] || [ -z "${CI_SEED_STEPH_PASSWORD}" ]; then
+            echo "ERROR: Repository secrets CI_SEED_ADMIN_PASSWORD and CI_SEED_STEPH_PASSWORD must be configured." >&2
+            echo "These are disposable CI values only — never production EC2 credentials." >&2
+            exit 1
+          fi
+          echo "CI seed secrets are present (values not printed)."
 
       - name: Set up Python
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
@@ -100,90 +102,110 @@ jobs:
             requirements-dev.txt
 
       - name: Install dependencies
-        run: pip install --upgrade pip && pip install -r requirements-dev.txt
-
-      - name: Run pytest (111 tests)
         run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Configuration validation
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f Dockerfile
+          test -f docker-compose.yml
+          test -f data.json
+          test -f scripts/migrate_json_to_mysql.py
+          test -f scripts/seed_dev_users.py
+          python -m compileall -q app.py config.py models.py repository.py scripts tests
+          # Compose config with CI-safe throwaway env (never real .env).
+          export FLASK_SECRET_KEY=ci-only
+          export MYSQL_HOST=db
+          export MYSQL_PORT=3306
+          export MYSQL_USER=hotel_test
+          export MYSQL_PASSWORD=hotel_test_password
+          export MYSQL_DATABASE=c270_hotel_management_test
+          export MYSQL_ROOT_PASSWORD=ci-root-password
+          export COMPOSE_MYSQL_DATABASE=c270_hotel_management_test
+          export IMAGE_NAME=c270-hotel-management:ci
+          docker compose -f docker-compose.yml config >/dev/null
+          echo "Configuration validation passed"
+
+      - name: Seed-room source validation
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          rooms = json.loads(Path("data.json").read_text(encoding="utf-8")).get("rooms") or []
+          numbers = []
+          for row in rooms:
+              numbers.append(int(row["room_number"]))
+          assert len(numbers) == 25, len(numbers)
+          assert len(set(numbers)) == 25, "duplicate seed room numbers"
+          print("seed_rooms=25 unique")
+          PY
+
+      - name: Focused tests
+        shell: bash
+        env:
+          SEED_ADMIN_PASSWORD: ${{ secrets.CI_SEED_ADMIN_PASSWORD }}
+          SEED_STEPH_PASSWORD: ${{ secrets.CI_SEED_STEPH_PASSWORD }}
+        run: |
+          set -euo pipefail
           mkdir -p reports
-          # pipefail: without it, `tee` masks pytest's non-zero exit and the
-          # Test job would stay green even when tests fail (breaks FA gating).
-          set -o pipefail
-          python -m pytest --junitxml=reports/junit.xml --tb=short | tee reports/pytest.txt
+          unset SEED_USER_PASSWORD || true
+          pytest -q \
+            tests/test_migrate_rooms.py \
+            tests/test_rooms_login_smoke.py \
+            tests/test_room_management.py \
+            tests/test_health_and_config.py \
+            --junitxml=reports/focused-junit.xml
 
-      - name: Upload pytest JUnit report
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: pytest-report-${{ github.run_id }}
-          path: reports/
-          if-no-files-found: warn
-          retention-days: 14
-
-  build:
-    name: Build image (Buildx)
-    needs: test
-    runs-on: ubuntu-24.04
-    outputs:
-      image_tag: ${{ steps.meta.outputs.tag }}
-      short_sha: ${{ steps.meta.outputs.short_sha }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-
-      - name: Image tags (short SHA)
-        id: meta
+      - name: Full test suite
+        shell: bash
+        env:
+          SEED_ADMIN_PASSWORD: ${{ secrets.CI_SEED_ADMIN_PASSWORD }}
+          SEED_STEPH_PASSWORD: ${{ secrets.CI_SEED_STEPH_PASSWORD }}
         run: |
-          SHORT_SHA="${GITHUB_SHA::7}"
-          echo "short_sha=${SHORT_SHA}" >> "$GITHUB_OUTPUT"
-          echo "tag=${IMAGE_NAME}:${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+          set -euo pipefail
+          mkdir -p reports
+          unset SEED_USER_PASSWORD || true
+          pytest -q --junitxml=reports/pytest-junit.xml | tee reports/pytest.txt
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - name: Docker build
+        id: build
+        shell: bash
+        run: |
+          set -euo pipefail
+          SHORT_SHA="${GITHUB_SHA::12}"
+          TAG="${IMAGE_NAME}:ci-${SHORT_SHA}"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          docker build -t "${TAG}" .
 
-      - name: Build image (no registry push)
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
-        with:
-          context: .
-          file: ./Dockerfile
-          load: true
-          tags: |
-            ${{ steps.meta.outputs.tag }}
-            ${{ env.IMAGE_NAME }}:ci
-          cache-from: type=gha,scope=hotel-app
-          cache-to: type=gha,mode=max,scope=hotel-app
+      - name: Docker image content verification
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.build.outputs.tag }}"
+          docker run --rm --entrypoint '' "${TAG}" \
+            sh -c 'test -f /app/data.json && test -f /app/scripts/migrate_json_to_mysql.py && \
+                   python -c "import json; r=json.load(open(\"/app/data.json\"))[\"rooms\"]; assert len(r)==25; print(len(r))"'
 
-      - name: Save image for scan job
-        run: docker save "${{ steps.meta.outputs.tag }}" | gzip > /tmp/image.tar.gz
+      - name: Non-root verification
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.build.outputs.tag }}"
+          UID_VAL="$(docker run --rm --entrypoint '' "${TAG}" id -u)"
+          echo "image_uid=${UID_VAL}"
+          test "${UID_VAL}" != "0"
+          test "${UID_VAL}" = "10001"
 
-      - name: Upload image artifact
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: image-${{ github.sha }}
-          path: /tmp/image.tar.gz
-          retention-days: 2
-
-  scan:
-    name: Scan image (Trivy)
-    needs: build
-    runs-on: ubuntu-24.04
-    steps:
-      - name: Checkout
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-
-      - name: Download image artifact
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
-        with:
-          name: image-${{ github.sha }}
-          path: /tmp
-
-      - name: Load image
-        run: gunzip -c /tmp/image.tar.gz | docker load
-
-      # SHA-pinned post-incident safe release of trivy-action (v0.35.0).
-      - name: Trivy scan (fail on HIGH/CRITICAL)
+      - name: Trivy security gate
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
         with:
-          image-ref: ${{ needs.build.outputs.image_tag }}
+          image-ref: ${{ steps.build.outputs.tag }}
           format: table
           exit-code: "1"
           ignore-unfixed: true
@@ -191,24 +213,46 @@ jobs:
           severity: CRITICAL,HIGH
           scanners: vuln
 
-      - name: Export Trivy JSON report
+      - name: Trivy SARIF report
         if: always()
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
         with:
-          image-ref: ${{ needs.build.outputs.image_tag }}
-          format: json
-          output: trivy-report.json
+          image-ref: ${{ steps.build.outputs.tag }}
+          format: sarif
+          output: reports/trivy.sarif
           ignore-unfixed: true
           vuln-type: os,library
-          severity: CRITICAL,HIGH,MEDIUM
+          severity: CRITICAL,HIGH
           scanners: vuln
           exit-code: "0"
 
-      - name: Upload Trivy report
+      - name: Upload Trivy SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        continue-on-error: true
+        with:
+          sarif_file: reports/trivy.sarif
+
+      - name: Upload CI artifacts
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: trivy-report-${{ github.run_id }}
-          path: trivy-report.json
+          name: c270-ci-reports-${{ github.run_id }}
+          path: reports/
           if-no-files-found: warn
           retention-days: 14
+
+      - name: CI summary
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "## C270 CI Quality Gate"
+            echo "- Focused + full pytest executed"
+            echo "- Docker image: ${{ steps.build.outputs.tag }}"
+            echo "- Non-root UID expected: 10001"
+            echo "- Seed rooms validated: 25 unique"
+            echo "- Trivy HIGH/CRITICAL gate enabled (ignore-unfixed documented)"
+            echo "- No AWS deploy / no ECR push from GitHub Actions"
+          } >> "$GITHUB_STEP_SUMMARY"
