@@ -12,7 +12,10 @@
 #   HIGH CVEs in setuptools/wheel metadata the running app never needs
 #   (Plan A — remove/fix rather than ignore).
 
-# Multi-arch index digest for python:3.11-slim (Docker Hub, verified 2026-08-01).
+# Multi-arch index digest for python:3.11-slim (Docker Hub).
+# Re-verified 2026-08-03: still matches current python:3.11-slim tip (Debian 13/trixie).
+# Evaluated python:3.11-slim-bookworm@sha256:b18992999dbe963a45a8a4da40ac2b1975be1a776d939d098c647482bcad5cba
+# (Debian 12.15) — more unfixed HIGH/CRITICAL in full audit; kept slim/trixie.
 ARG PYTHON_IMAGE=python:3.11-slim@sha256:db3ff2e1800a8581e2c48a27c3995339d47bdf046da21c7627accd3d51053a93
 
 FROM ${PYTHON_IMAGE} AS builder
