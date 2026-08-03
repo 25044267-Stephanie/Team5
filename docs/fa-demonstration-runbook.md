@@ -6,20 +6,26 @@ Do not store passwords, PEM contents, or AWS temporary keys in this file.
 
 1. Start the **AWS Academy Learner Lab** (credentials expire often).
 2. Confirm region **us-east-1**.
-3. From the project root on Windows:
+3. Copy the newest AWS Academy **CLI** credential block to the Windows clipboard
+   (do not paste keys into chat).
+4. Recover Jenkins + app connectivity in one command from the project root:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\aws\Start-C270Lab.ps1 -OpenBrowser
+powershell.exe -NoProfile -ExecutionPolicy Bypass `
+  -File ".\scripts\aws\Recover-C270Environment.ps1" `
+  -StartInstances -RepairSecurityGroups -RepairJenkins `
+  -CheckApplication -CheckJenkins -OpenBrowser
 ```
 
-If the instance is stopped:
+This rediscovers current public IPs, repairs managed `/32` SG rules for your
+current client IP, verifies Jenkins/Docker, and opens the Jenkins login page.
+Never reuse a bookmarked Jenkins URL after a lab restart.
+
+Optional app-only helper (writes gitignored `ansible/hosts.ini`):
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\aws\Start-C270Lab.ps1 -StartInstance -OpenBrowser
 ```
-
-This script discovers the **current** public IP (Academy IPs change), writes
-gitignored `ansible/hosts.ini`, and prints SSH / website / health URLs.
 
 ## Demonstration order
 
@@ -31,9 +37,9 @@ gitignored `ansible/hosts.ini`, and prints SSH / website / health URLs.
 6. On EC2: `docker compose … ps` — app healthy, db `3306/tcp` only.
 7. Show `SELECT COUNT(*) FROM rooms` → **25**.
 8. Ansible first run + second idempotent run (PLAY RECAP).
-9. Jenkins: run `Start-C270Jenkins.ps1 -OpenBrowser` (IP changes after Academy restart).
-10. Show dry-run (`DEPLOY_TO_AWS=false`) then full deploy (`DEPLOY_TO_AWS=true`).
-11. Show Trivy gate, ECR `git-<sha>` tag + digest, dynamic app host resolve, Ansible.
+9. Jenkins: run `Recover-C270Environment.ps1` (or `Start-C270Jenkins.ps1 -OpenBrowser`); IP changes after Academy restart.
+10. Show dry-run (`DEPLOY_TO_AWS=false`) on `ci/github-actions` tip `aedb66d`, then full deploy (`DEPLOY_TO_AWS=true`).
+11. Show Trivy full/gate/secrets, ECR `git-<sha>` tag + digest, dynamic app host resolve, Ansible.
 12. Confirm room_count 25, admin/steph once each, `/healthz` 200.
 13. GitHub webhook 2xx delivery (only after manual full pipeline is green).
 14. Explain rollback to `manual-20260802-160243` (app only; keep MySQL volume).

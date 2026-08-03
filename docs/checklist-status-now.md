@@ -11,9 +11,15 @@
 - [x] skipDefaultCheckout to avoid duplicate SCM checkout (`31506e1`)
 - [x] Clean-container focused + full tests green (140 passed)
 
+## Current (connectivity)
+
+- [ ] AWS Academy Learner Lab started + CLI credential block on clipboard
+- [ ] Run `scripts/aws/Recover-C270Environment.ps1` with Start/Repair/Check/OpenBrowser
+- [ ] External Jenkins login page HTTP 200/302/403 (not a bookmarked old IP)
+
 ## Next (you click)
 
-- [ ] Jenkins dry-run after Trivy policy fix (expect new commit on `ci/github-actions`)
+- [ ] Jenkins dry-run on tip `aedb66d` (`ci/github-actions`)
   - Job: `c270-hotel-management-pipeline`
   - Build with Parameters:
     - `DEPLOY_TO_AWS=false`
@@ -26,6 +32,7 @@
 ## After dry-run green
 
 - [ ] Full deploy `DEPLOY_TO_AWS=true`
+- [ ] Browser gate (admin / steph / rooms / booking / feedback / logout)
 - [ ] Rollback evidence `ROLLBACK_ONLY=true`
-- [ ] Webhook
-- [ ] GitHub Actions secrets + merge feature branch
+- [ ] Webhook (update URL after every lab restart)
+- [ ] GitHub Actions green CI (no AWS deploy)

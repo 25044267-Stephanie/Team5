@@ -55,13 +55,16 @@ Collect screenshots / command output for each item. **Never capture passwords, P
 
 - [ ] Separate `c270-jenkins` EC2 (not on app host)
 - [ ] `Start-C270Jenkins.ps1` discovers current Jenkins IP
+- [ ] `Recover-C270Environment.ps1` recovers after Learner Lab restart (clipboard creds, dynamic IPs, SG /32, Jenkins health)
 - [ ] Bootstrap: Java 21, Jenkins, Git, Docker, AWS CLI, Ansible, Trivy
 - [ ] Credentials: `hotel-ec2-ssh`, `hotel-seed-admin-password`, `hotel-seed-steph-password`
 - [ ] Dry-run: `DEPLOY_TO_AWS=false` green (Checkout → Validate → Tests → Build → Non-root → Trivy)
+- [ ] Trivy artifacts: `trivy-full.txt`, `trivy-gate.txt`, `trivy-secrets.txt` (fixable HC=0, secrets=0)
 - [ ] Full run: ECR immutable `git-<sha>` push + dynamic host resolve + Ansible deploy
 - [ ] Post-deploy: room_count=25; one admin; one steph; health 200; no public 3306
 - [ ] Rollback evidence (`ROLLBACK_ONLY` or failure path); tag `manual-20260802-160243`
 - [ ] Webhook only after manual full pipeline is green
+- [ ] After lab restart: rediscover Jenkins public IP; update webhook URL if needed
 
 ## GitHub webhook
 
