@@ -10,17 +10,27 @@ services:
     # Multi-arch index digest for mysql:8.4 (Docker Hub, verified 2026-08-01).
     image: mysql:8.4@sha256:b3b90af2a6552ae30c266fdb7d5dd55f3afb72404bb78d37fe8a23eb857fd3fb
     restart: unless-stopped
+
     environment:
-      MYSQL_DATABASE: ${MYSQL_DATABASE:-hotel_management}
+      # Compose DB name — defaults to the same schema Windows Workbench uses.
+      # Do not point the app container at 127.0.0.1 (that is the app itself).
+      MYSQL_DATABASE: ${COMPOSE_MYSQL_DATABASE:-c270_hotel_management_local}
       MYSQL_USER: ${MYSQL_USER:-hotel_app}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD:?Set MYSQL_PASSWORD in .env}
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Set MYSQL_ROOT_PASSWORD in .env}
+
     volumes:
       - mysql-data:/var/lib/mysql
-      # schema.sql DROPs tables — safe only on first volume init, never as a migrate step.
-      - ./database/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      # Non-destructive placeholder only. Never mount database/schema.sql here
+      # (it DROP TABLEs). Tables come from scripts/docker_bootstrap.py.
+      - ./database/docker_init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+
     healthcheck:
-      test: ["CMD-SHELL", "mysqladmin ping -h localhost -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+      test:
+        [
+          "CMD-SHELL",
+          "mysqladmin ping -h localhost -uroot -p$$MYSQL_ROOT_PASSWORD --silent"
+        ]
       interval: 5s
       timeout: 5s
       retries: 20
@@ -28,15 +38,29 @@ services:
   app:
     image: ${IMAGE_NAME:-c270-hotel-management:local}
     restart: unless-stopped
+
     ports:
       - "${APP_PORT:-5050}:5050"
+
     environment:
       FLASK_SECRET_KEY: ${FLASK_SECRET_KEY:?Set FLASK_SECRET_KEY in .env}
+
+      # App reaches MySQL using the Compose service name `db`.
+      # Do not use 127.0.0.1 inside the app container.
       MYSQL_HOST: db
-      MYSQL_PORT: 3306
+      MYSQL_PORT: "3306"
       MYSQL_USER: ${MYSQL_USER:-hotel_app}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD:?Set MYSQL_PASSWORD in .env}
-      MYSQL_DATABASE: ${MYSQL_DATABASE:-hotel_management}
+      MYSQL_DATABASE: ${COMPOSE_MYSQL_DATABASE:-c270_hotel_management_local}
+
+      # Required because config.py creates TestConfig during import.
+      MYSQL_TEST_DATABASE: ${MYSQL_TEST_DATABASE:?Set MYSQL_TEST_DATABASE in .env}
+
+      # Pass website seed-account passwords into the application container.
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:?Set SEED_ADMIN_PASSWORD in .env}
+      SEED_USER_PASSWORD: ${SEED_USER_PASSWORD:?Set SEED_USER_PASSWORD in .env}
+      SEED_STEPH_PASSWORD: ${SEED_STEPH_PASSWORD:?Set SEED_STEPH_PASSWORD in .env}
+
     depends_on:
       db:
         condition: service_healthy

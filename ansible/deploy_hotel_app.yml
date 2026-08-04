@@ -1,0 +1,447 @@
+---
+# Idempotent bootstrap of Amazon Linux 2023 for C270 Hotel Management.
+#
+# WHY (FA / L4):
+# - Scripts alone are useful; Ansible makes host configuration declarative,
+#   re-runnable, and demonstrable as Infrastructure as Code.
+# - This playbook prepares Docker, directories, CloudWatch agent, and deploy
+#   files. It does NOT invent secrets and will not overwrite an existing .env.
+#
+# Usage (from repo root, with a private hosts.ini):
+#   ansible-playbook -i ansible/hosts.ini ansible/deploy_hotel_app.yml --syntax-check
+#   ansible-playbook -i ansible/hosts.ini ansible/deploy_hotel_app.yml --check
+#   ansible-playbook -i ansible/hosts.ini ansible/deploy_hotel_app.yml
+#   ansible-playbook -i ansible/hosts.ini ansible/deploy_hotel_app.yml -e run_deploy=true
+
+- name: Bootstrap C270 hotel app host (Amazon Linux 2023)
+  hosts: hotel_app
+  become: true
+  gather_facts: true
+
+  vars:
+    # Matches the Academy lab checkout path used in this project.
+    app_dir: /home/ec2-user/c270-hotel-management
+    app_user: ec2-user
+    app_group: ec2-user
+    compose_plugin_version: "v2.29.7"
+    # When true, runs scripts/aws/deploy.sh after bootstrap (requires .env + APP_IMAGE).
+    run_deploy: false
+    # When true (and run_deploy), verifies room_count == 25 and demo accounts.
+    verify_rooms: true
+    verify_demo_users: true
+    aws_region: us-east-1
+    app_image: ""
+    # Project files are copied from the controller machine's checkout.
+    project_root: "{{ playbook_dir | dirname }}"
+    compose_files: "-f docker-compose.yml -f docker-compose.prod.mysql-fallback.yml"
+
+  handlers:
+    - name: Restart Docker
+      ansible.builtin.systemd:
+        name: docker
+        state: restarted
+        enabled: true
+
+    - name: Apply CloudWatch agent configuration
+      ansible.builtin.command:
+        cmd: >-
+          /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl
+          -a fetch-config -m ec2
+          -c "file:{{ app_dir }}/cloudwatch/amazon-cloudwatch-agent.json"
+          -s
+      changed_when: true
+
+  tasks:
+    - name: Assert Amazon Linux family host
+      ansible.builtin.assert:
+        that:
+          - ansible_os_family == "RedHat"
+          - ansible_distribution in ["Amazon", "CentOS", "RedHat"]
+        fail_msg: >-
+          This playbook targets Amazon Linux 2023 (dnf). Detected
+          {{ ansible_distribution }} {{ ansible_distribution_version }}.
+
+    - name: Refresh DNF metadata
+      ansible.builtin.command: dnf makecache
+      changed_when: false
+
+    - name: Install Docker, CloudWatch agent, and utilities
+      ansible.builtin.dnf:
+        name:
+          - docker
+          - jq
+          # Amazon Linux 2023 ships curl-minimal; do not install full "curl"
+          # (dnf conflicts with the minimal package already on the AMI).
+          - curl-minimal
+          - unzip
+          - amazon-cloudwatch-agent
+        state: present
+      notify: Restart Docker
+
+    - name: Install AWS CLI package when available
+      ansible.builtin.dnf:
+        name: awscli
+        state: present
+      failed_when: false
+
+    - name: Ensure Docker service is enabled and started
+      ansible.builtin.systemd:
+        name: docker
+        state: started
+        enabled: true
+
+    - name: Add ec2-user to the docker group
+      ansible.builtin.user:
+        name: "{{ app_user }}"
+        groups: docker
+        append: true
+
+    - name: Check whether Docker Compose v2 plugin works
+      ansible.builtin.command: docker compose version
+      register: compose_check
+      changed_when: false
+      failed_when: false
+      become: false
+
+    - name: Install Docker Compose plugin via dnf when missing
+      ansible.builtin.dnf:
+        name: docker-compose-plugin
+        state: present
+      when: compose_check.rc != 0
+      failed_when: false
+
+    - name: Ensure Docker CLI plugins directory exists
+      ansible.builtin.file:
+        path: /usr/local/lib/docker/cli-plugins
+        state: directory
+        mode: "0755"
+      when: compose_check.rc != 0
+
+    - name: Install Compose plugin binary fallback when still missing
+      ansible.builtin.get_url:
+        url: >-
+          https://github.com/docker/compose/releases/download/{{ compose_plugin_version }}/docker-compose-linux-x86_64
+        dest: /usr/local/lib/docker/cli-plugins/docker-compose
+        mode: "0755"
+        force: false
+      when: compose_check.rc != 0
+
+    - name: Re-check Docker Compose after install attempts
+      ansible.builtin.command: docker compose version
+      register: compose_recheck
+      changed_when: false
+      failed_when: compose_recheck.rc != 0
+      become: false
+
+    - name: Create application directory tree
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: "{{ app_user }}"
+        group: "{{ app_group }}"
+        mode: "0755"
+      loop:
+        - "{{ app_dir }}"
+        - "{{ app_dir }}/state"
+        - "{{ app_dir }}/logs"
+        - "{{ app_dir }}/cloudwatch"
+        - "{{ app_dir }}/scripts/aws"
+        - "{{ app_dir }}/database"
+
+    - name: Synchronize Compose files to the host
+      ansible.builtin.copy:
+        src: "{{ project_root }}/{{ item }}"
+        dest: "{{ app_dir }}/{{ item }}"
+        owner: "{{ app_user }}"
+        group: "{{ app_group }}"
+        mode: "0644"
+      loop:
+        - docker-compose.yml
+        - docker-compose.prod.yml
+        - docker-compose.prod.mysql-fallback.yml
+
+    - name: Synchronize AWS helper scripts
+      ansible.builtin.copy:
+        src: "{{ project_root }}/scripts/aws/"
+        dest: "{{ app_dir }}/scripts/aws/"
+        owner: "{{ app_user }}"
+        group: "{{ app_group }}"
+        mode: "0755"
+        directory_mode: "0755"
+
+    - name: Synchronize seed_dev_users.py for targeted demo-account recovery
+      ansible.builtin.copy:
+        src: "{{ project_root }}/scripts/seed_dev_users.py"
+        dest: "{{ app_dir }}/scripts/seed_dev_users.py"
+        owner: "{{ app_user }}"
+        group: "{{ app_group }}"
+        mode: "0755"
+
+    - name: Synchronize CloudWatch agent configuration
+      ansible.builtin.copy:
+        src: "{{ project_root }}/cloudwatch/"
+        dest: "{{ app_dir }}/cloudwatch/"
+        owner: "{{ app_user }}"
+        group: "{{ app_group }}"
+        mode: "0644"
+        directory_mode: "0755"
+      notify: Apply CloudWatch agent configuration
+
+    - name: Synchronize database SQL helpers
+      ansible.builtin.copy:
+        src: "{{ project_root }}/database/"
+        dest: "{{ app_dir }}/database/"
+        owner: "{{ app_user }}"
+        group: "{{ app_group }}"
+        mode: "0644"
+        directory_mode: "0755"
+
+    - name: Ensure deployment scripts are executable
+      ansible.builtin.shell: chmod +x {{ app_dir }}/scripts/aws/*.sh
+      args:
+        executable: /bin/bash
+      changed_when: false
+
+    - name: Stat server-side .env (must already exist; never created with secrets here)
+      ansible.builtin.stat:
+        path: "{{ app_dir }}/.env"
+      register: env_file
+
+    - name: Warn when production .env is missing
+      ansible.builtin.debug:
+        msg: >-
+          {{ app_dir }}/.env is missing. Create it on the server (mode 600) with
+          FLASK_SECRET_KEY, MYSQL_*, APP_IMAGE — never commit it. Deploy will
+          be skipped until it exists.
+      when: not env_file.stat.exists
+
+    - name: Harden .env permissions when the file already exists
+      ansible.builtin.file:
+        path: "{{ app_dir }}/.env"
+        owner: "{{ app_user }}"
+        group: "{{ app_group }}"
+        mode: "0600"
+      when: env_file.stat.exists
+
+    - name: Record Docker engine version
+      ansible.builtin.command: docker version --format {% raw %}{{.Server.Version}}{% endraw %}
+      register: docker_version
+      changed_when: false
+
+    - name: Show Docker and Compose versions for FA evidence
+      ansible.builtin.debug:
+        msg:
+          - "Docker: {{ docker_version.stdout }}"
+          - "Compose: {{ compose_recheck.stdout }}"
+          - "App dir: {{ app_dir }}"
+          - "Env present: {{ env_file.stat.exists }}"
+
+    - name: Optionally set APP_IMAGE / IMAGE_NAME when app_image is provided
+      ansible.builtin.shell: |
+        set -euo pipefail
+        python3 - <<'PY'
+        from pathlib import Path
+        new_image = """{{ app_image }}"""
+        path = Path("{{ app_dir }}/.env")
+        lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
+        out, seen_app, seen_name = [], False, False
+        for line in lines:
+            if line.startswith("APP_IMAGE="):
+                out.append(f"APP_IMAGE={new_image}\n"); seen_app = True
+            elif line.startswith("IMAGE_NAME="):
+                out.append(f"IMAGE_NAME={new_image}\n"); seen_name = True
+            else:
+                out.append(line if line.endswith("\n") else line + "\n")
+        if not seen_app:
+            out.append(f"APP_IMAGE={new_image}\n")
+        if not seen_name:
+            out.append(f"IMAGE_NAME={new_image}\n")
+        path.write_text("".join(out), encoding="utf-8")
+        path.chmod(0o600)
+        print("APP_IMAGE_UPDATED")
+        PY
+      args:
+        executable: /bin/bash
+      become: false
+      when:
+        - run_deploy | bool
+        - env_file.stat.exists
+        - (app_image | length) > 0
+      changed_when: true
+
+    - name: Optionally deploy the current APP_IMAGE from server .env
+      ansible.builtin.command: bash {{ app_dir }}/scripts/aws/deploy.sh
+      environment:
+        APP_DIR: "{{ app_dir }}"
+        COMPOSE_FILES: "{{ compose_files }}"
+        AWS_REGION: "{{ aws_region }}"
+        RUN_ROOM_MIGRATE: "true"
+        RUN_DEMO_USER_ENSURE: "true"
+      become: false
+      when:
+        - run_deploy | bool
+        - env_file.stat.exists
+      register: deploy_result
+      changed_when: "'Deploy succeeded' in (deploy_result.stdout | default(''))"
+
+    - name: Verify localhost /healthz after optional deploy
+      ansible.builtin.uri:
+        url: http://127.0.0.1:5050/healthz
+        return_content: true
+        status_code: 200
+      become: false
+      when:
+        - run_deploy | bool
+        - env_file.stat.exists
+      register: healthz
+      retries: 10
+      delay: 6
+      until: healthz.status == 200
+
+    - name: Assert healthz reports status ok
+      ansible.builtin.assert:
+        that:
+          - "'ok' in (healthz.content | default(''))"
+        fail_msg: "/healthz did not report ok"
+      when:
+        - run_deploy | bool
+        - env_file.stat.exists
+
+    - name: Verify room_count is exactly 25 after deploy
+      ansible.builtin.shell: |
+        set -euo pipefail
+        cd "{{ app_dir }}"
+        docker compose --env-file .env {{ compose_files }} exec -T db \
+          sh -lc 'mysql -N -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" "$MYSQL_DATABASE" -e "SELECT COUNT(*) FROM rooms;"'
+      args:
+        executable: /bin/bash
+      become: false
+      register: room_count_raw
+      changed_when: false
+      when:
+        - run_deploy | bool
+        - verify_rooms | bool
+        - env_file.stat.exists
+
+    - name: Assert rooms inventory is complete
+      ansible.builtin.assert:
+        that:
+          - (room_count_raw.stdout | trim | int) == 25
+        fail_msg: >-
+          Expected room_count=25 after rooms-only migrate; got
+          {{ room_count_raw.stdout | trim }}.
+      when:
+        - run_deploy | bool
+        - verify_rooms | bool
+        - env_file.stat.exists
+
+    - name: Verify demo accounts admin and steph
+      ansible.builtin.shell: |
+        set -euo pipefail
+        cd "{{ app_dir }}"
+        docker compose --env-file .env {{ compose_files }} exec -T db \
+          sh -lc 'mysql -N -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" "$MYSQL_DATABASE" -e "
+          SELECT CONCAT(username, \":\", role) FROM users WHERE username IN (\"admin\",\"steph\") ORDER BY username;
+          SELECT COUNT(*) FROM users WHERE username=\"admin\";
+          SELECT COUNT(*) FROM users WHERE username=\"steph\";
+          "'
+      args:
+        executable: /bin/bash
+      become: false
+      register: demo_users_raw
+      changed_when: false
+      when:
+        - run_deploy | bool
+        - verify_demo_users | bool
+        - env_file.stat.exists
+
+    - name: Assert demo accounts exist with correct roles
+      ansible.builtin.assert:
+        that:
+          - "'admin:admin' in demo_users_raw.stdout"
+          - "'steph:user' in demo_users_raw.stdout"
+        fail_msg: >-
+          Demo accounts missing or wrong roles. Output:
+          {{ demo_users_raw.stdout }}
+      when:
+        - run_deploy | bool
+        - verify_demo_users | bool
+        - env_file.stat.exists
+
+    - name: Count admin and steph rows exactly once each
+      ansible.builtin.shell: |
+        set -euo pipefail
+        cd "{{ app_dir }}"
+        docker compose --env-file .env {{ compose_files }} exec -T db \
+          sh -lc 'mysql -N -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" "$MYSQL_DATABASE" -e "
+          SELECT COUNT(*) FROM users WHERE username=\"admin\";
+          SELECT COUNT(*) FROM users WHERE username=\"steph\";
+          "'
+      args:
+        executable: /bin/bash
+      become: false
+      register: demo_counts_raw
+      changed_when: false
+      when:
+        - run_deploy | bool
+        - verify_demo_users | bool
+        - env_file.stat.exists
+
+    - name: Assert exactly one admin and one steph
+      ansible.builtin.assert:
+        that:
+          - (demo_counts_raw.stdout_lines[0] | trim | int) == 1
+          - (demo_counts_raw.stdout_lines[1] | trim | int) == 1
+        fail_msg: >-
+          Expected exactly one admin and one steph. Output:
+          {{ demo_counts_raw.stdout }}
+      when:
+        - run_deploy | bool
+        - verify_demo_users | bool
+        - env_file.stat.exists
+
+    - name: Verify application container is non-root
+      ansible.builtin.shell: |
+        set -euo pipefail
+        cd "{{ app_dir }}"
+        docker compose --env-file .env {{ compose_files }} exec -T app id -u
+      args:
+        executable: /bin/bash
+      become: false
+      register: app_uid_raw
+      changed_when: false
+      when:
+        - run_deploy | bool
+        - env_file.stat.exists
+
+    - name: Assert application UID is not root
+      ansible.builtin.assert:
+        that:
+          - (app_uid_raw.stdout | trim) != "0"
+        fail_msg: "Application container is running as root"
+      when:
+        - run_deploy | bool
+        - env_file.stat.exists
+
+    - name: Verify MySQL is not published on the host
+      ansible.builtin.shell: |
+        set -euo pipefail
+        cd "{{ app_dir }}"
+        docker compose --env-file .env {{ compose_files }} ps --format json
+      args:
+        executable: /bin/bash
+      become: false
+      register: compose_ps_json
+      changed_when: false
+      when:
+        - run_deploy | bool
+        - env_file.stat.exists
+
+    - name: Assert no public 0.0.0.0:3306 binding
+      ansible.builtin.assert:
+        that:
+          - "'0.0.0.0:3306' not in (compose_ps_json.stdout | default(''))"
+        fail_msg: "MySQL appears published on 0.0.0.0:3306 — remove host port mapping"
+      when:
+        - run_deploy | bool
+        - env_file.stat.exists

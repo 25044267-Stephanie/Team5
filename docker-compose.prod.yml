@@ -1,0 +1,50 @@
+# Production Compose for Amazon EC2 → private Amazon RDS MySQL.
+#
+# WHY:
+# - App image is pulled from ECR via APP_IMAGE (immutable Git SHA tag).
+#   EC2 never builds from source.
+# - Database is Amazon RDS (MYSQL_HOST), not a Compose MySQL service.
+# - Port 3306 is never published from this file.
+# - Local Docker MySQL remains in docker-compose.yml (+ override).
+#
+# Academy fallback (Compose MySQL on EC2 when RDS is blocked):
+#   docker-compose.prod.mysql-fallback.yml
+#
+# Usage on EC2:
+#   docker compose -f docker-compose.prod.yml --env-file .env up -d
+
+name: c270-hotel-prod
+
+services:
+  app:
+    image: ${APP_IMAGE:?Set APP_IMAGE to the ECR URI with immutable SHA tag}
+    restart: unless-stopped
+    ports:
+      - "5050:5050"
+    environment:
+      FLASK_SECRET_KEY: ${FLASK_SECRET_KEY:?Set FLASK_SECRET_KEY in server .env}
+      MYSQL_HOST: ${MYSQL_HOST:?Set MYSQL_HOST to the private RDS endpoint}
+      MYSQL_PORT: ${MYSQL_PORT:-3306}
+      MYSQL_USER: ${MYSQL_USER:-hotel_app}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?Set MYSQL_PASSWORD in server .env}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-hotel_management}
+      MYSQL_SSL_REQUIRED: ${MYSQL_SSL_REQUIRED:-true}
+      MYSQL_SSL_CA: ${MYSQL_SSL_CA:-}
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5050/healthz', timeout=4)",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+        tag: "{{.Name}}"

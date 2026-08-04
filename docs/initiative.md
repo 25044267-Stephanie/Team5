@@ -1,10 +1,10 @@
 # Technical initiative ledger
 
-Work **beyond** the core brief. Each item needs a live ≤2-minute demo artifact.
+Work **beyond** the core brief. Each item needs a live ≤2-minute demo.
 Do not double-count with Core or CA2.
 
 | Item | Owner | Status | Demo script (≤2 min) |
 |---|---|---|---|
-| Trivy HIGH/CRITICAL gate in CI | TBD | Integrated in `.github/workflows/ci.yml` `build-and-scan` | 1. Open Actions run → expand **Trivy scan**. 2. On a throwaway branch, temporarily add a known-bad package or remove `ignore-unfixed` / lower base image; push; show the job fail red and block merge. 3. Revert. |
-| Auto-rollback on failed `/healthz` | TBD | Planned Phase 5/6 | Deploy bad tag → watch previous digest restore. |
-| CloudWatch JSON logs + alarm | TBD | Stretch only | Trigger alarm → show ALARM state. |
+| Trivy HIGH/CRITICAL gate in CI | Stephanie Ong | Live in `ci.yml` | Open a red Scan job (deliberate vulnerable pin) or green scan artifact |
+| CloudWatch logs + metrics + CPU alarm | Stephanie Ong | Config + scripts ready | Show `/c270/hotel/app` log events + `c270-hotel-cpu-high` alarm |
+| Auto-rollback script | Stephanie Ong | `scripts/aws/rollback.sh` | Redeploy previous SHA from `state/previous_image` |

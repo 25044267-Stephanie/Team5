@@ -4,6 +4,35 @@ Flask hotel management app, backed by **MySQL** (via Flask-SQLAlchemy +
 PyMySQL). `data.json` is kept in the repo only as a legacy, pre-migration
 backup — the running application no longer reads or writes it.
 
+## Team Contributions
+
+Contribution mapping from the project presentation (accurate record for FA
+individual scoring — not padded).
+
+### Stephanie Ong — Member 1 — 50%
+- Main project integration.
+- Login and role-based portal.
+- Special-request functionality.
+- Testing and final UI debugging.
+- DevOps / CI foundation for the FA demonstration path.
+
+### AhmadAkmalRP — Member 2 — 30%
+- Room catalogue.
+- Room add, edit, and delete functionality.
+- Admin room-management pages.
+- Room images.
+- Booking-form support.
+- Room availability and booking-validation support.
+
+### 25043549-Daniel — Member 3 — 15%
+- Booking list and booking management.
+- Check-in and check-out workflow.
+- Booking and room-status updates.
+- Guest/admin booking visibility.
+- Selected automated test cases related to the booking workflow.
+
+See also `docs/ownership.md`.
+
 ## 1. Requirements
 
 - Python 3.11+
@@ -170,15 +199,26 @@ you intentionally want to remove the database and all its data.
 
 ## 10. CI pipeline (GitHub Actions)
 
-Primary CI is `.github/workflows/ci.yml`:
+Primary CI is `.github/workflows/ci.yml` (strict gate order):
 
-1. **Lint** — `ruff`
+1. **Lint** — `ruff check`
 2. **Test** — all 111 pytest tests against a MySQL 8.4 service container
-3. **Build + Trivy** — Buildx image tagged with the git SHA; Trivy fails the
-   job on fixable HIGH/CRITICAL vulnerabilities
+3. **Build** — Buildx image tagged with the short git SHA (no registry push yet)
+4. **Scan** — Trivy fails the job on fixable HIGH/CRITICAL findings
 
-See `docs/phase-2-verify.md` for the green-PR and deliberate-red-PR proof steps.
-Branch protection on `main` should require all three job names.
+See `docs/phase-2-verify.md` and `docs/verification-phase2.md`. Branch
+protection on `main` should require all four job names: `Lint (ruff)`,
+`Test (pytest + MySQL 8.4)`, `Build image (Buildx)`, `Scan image (Trivy)`.
+
+### Deploy to AWS (Academy / us-east-1)
+
+After CI succeeds on `main`, `.github/workflows/deploy-aws.yml` pushes the
+SHA-tagged image to Amazon ECR and deploys it to EC2 with
+`docker-compose.prod.yml` (app + MySQL volume, CloudWatch agent).
+
+Full steps: `docs/aws-deployment.md`  
+Demo checklist: `docs/fa-demonstration-checklist.md`  
+IAM examples: `docs/aws/iam-policies.md`
 
 ### Legacy Jenkins pipeline
 

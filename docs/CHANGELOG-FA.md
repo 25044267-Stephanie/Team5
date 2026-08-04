@@ -13,9 +13,10 @@ Do not list Core pipeline/deploy work or Initiative items here.
 | 2026-08-01 | `schema.sql` claimed "safe to re-run" but DROP TABLEs | Risk of wiping RDS/prod if used as migrate | Header warning; deploy path remains `init_db.py` only | Doc review of `database/schema.sql` |
 | 2026-08-01 | `ZoneInfo("Asia/Singapore")` failed on Windows without system tz DB | App/tests could not import on some hosts | Pinned `tzdata==2025.2` in runtime requirements | Import + pytest after install |
 | 2026-08-01 | No lint gate; unused imports in repo/scripts | Defects could land unnoticed | Added `ruff` + `pyproject.toml`; fixed unused imports / import order | `ruff check …` → All checks passed |
-| 2026-08-01 | No GitHub Actions; only placeholder Jenkinsfile | No automated PR gate | Added `.github/workflows/ci.yml` (lint/test/build/Trivy) | Pending live green/red PR (`docs/phase-2-verify.md`) |
+| 2026-08-01 | No GitHub Actions; only placeholder Jenkinsfile | No automated PR gate | Added `.github/workflows/ci.yml` (lint/test/build/Trivy) | Live green/red PR evidence in `docs/phase-2-verify.md` / `docs/verification-phase2.md` |
+| 2026-08-01 | No production Compose / ECR-EC2 path | Could not demonstrate CD in Academy | Added `docker-compose.prod.yml`, `scripts/aws/*`, `deploy-aws.yml`, CloudWatch agent config | Local script syntax + ruff OK; live AWS pending Academy lab (`docs/aws-deployment.md`) |
 
 ## Kept pending your sign-off
 
 - `data.json` / `data.json.bak` — legacy only; still on disk until you approve deletion.
-- Empty `ansible/` stubs — filled in Phase 4, not deleted.
+- Empty `ansible/` stubs — optional later; not required for Academy EC2 Compose path.

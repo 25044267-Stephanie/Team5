@@ -21,6 +21,10 @@ ignore = [
 # conftest must set MYSQL_DATABASE before importing app/config.
 "tests/conftest.py" = ["E402"]
 
+# Format gate deferred: `ruff format --check` reports 7 files (including
+# app.py). Mass-reformat would rewrite blame needed for FA individual scoring.
+# Revisit after Stage A is green if the team agrees on a dedicated format PR.
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"

@@ -1,0 +1,14 @@
+# Copy to hosts.ini (gitignored). Never commit a real IP or PEM path.
+#
+# Prefer generating hosts.ini with:
+#   powershell -File scripts\aws\Start-C270Lab.ps1
+#
+# Example shape only (placeholder host — replace via Start-C270Lab.ps1):
+
+[hotel_app]
+ec2-REPLACE-WITH-CURRENT-PUBLIC-IP
+
+[hotel_app:vars]
+ansible_user=ec2-user
+ansible_ssh_private_key_file=/mnt/c/Users/steph/.ssh/labsuser.pem
+ansible_python_interpreter=/usr/bin/python3

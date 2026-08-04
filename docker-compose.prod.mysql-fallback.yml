@@ -1,0 +1,107 @@
+# FALLBACK ONLY — AWS Academy when RDS is unavailable or blocked.
+#
+# This is LESS resilient than private RDS. Do not describe it as equivalent
+# production HA. Prefer docker-compose.prod.yml (EC2 app → RDS) when allowed.
+#
+# MySQL stays on the Compose network only (no host publish of 3306).
+#
+# Room inventory: tables alone do not insert rooms. After first deploy (or
+# whenever rooms are missing), run the one-shot migrate profile:
+#   docker compose --env-file .env \
+#     -f docker-compose.yml -f docker-compose.prod.mysql-fallback.yml \
+#     --profile migrate run --rm db-migrate
+
+name: c270-hotel-prod-mysql-fallback
+
+services:
+  db:
+    image: mysql:8.4@sha256:b3b90af2a6552ae30c266fdb7d5dd55f3afb72404bb78d37fe8a23eb857fd3fb
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-hotel_management}
+      MYSQL_USER: ${MYSQL_USER:-hotel_app}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?Set MYSQL_PASSWORD in server .env}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Set MYSQL_ROOT_PASSWORD in server .env}
+    volumes:
+      - mysql-data:/var/lib/mysql
+      # Non-destructive placeholder only. Never mount database/schema.sql here
+      # (it DROP TABLEs). Rooms come from scripts/migrate_json_to_mysql.py.
+      - ./database/docker_init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+        tag: "{{.Name}}"
+
+  app:
+    image: ${APP_IMAGE:?Set APP_IMAGE to the ECR URI with immutable SHA tag}
+    restart: unless-stopped
+    ports:
+      - "5050:5050"
+    environment:
+      FLASK_SECRET_KEY: ${FLASK_SECRET_KEY:?Set FLASK_SECRET_KEY in server .env}
+      MYSQL_HOST: db
+      MYSQL_PORT: "3306"
+      MYSQL_USER: ${MYSQL_USER:-hotel_app}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?Set MYSQL_PASSWORD in server .env}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-hotel_management}
+      # config.py defines TestConfig at import time; reuse the app DB name if unset.
+      MYSQL_TEST_DATABASE: ${MYSQL_TEST_DATABASE:-${MYSQL_DATABASE:-hotel_management}}
+      MYSQL_SSL_REQUIRED: "false"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5050/healthz', timeout=4)",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+        tag: "{{.Name}}"
+
+  # One-shot idempotent room restore. Does not restart continuously.
+  db-migrate:
+    profiles: ["migrate"]
+    image: ${APP_IMAGE:?Set APP_IMAGE to the ECR URI with immutable SHA tag}
+    restart: "no"
+    environment:
+      FLASK_SECRET_KEY: ${FLASK_SECRET_KEY:?Set FLASK_SECRET_KEY in server .env}
+      MYSQL_HOST: db
+      MYSQL_PORT: "3306"
+      MYSQL_USER: ${MYSQL_USER:-hotel_app}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?Set MYSQL_PASSWORD in server .env}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-hotel_management}
+      MYSQL_TEST_DATABASE: ${MYSQL_TEST_DATABASE:-${MYSQL_DATABASE:-hotel_management}}
+      MYSQL_SSL_REQUIRED: "false"
+    depends_on:
+      db:
+        condition: service_healthy
+    command:
+      [
+        "python",
+        "scripts/migrate_json_to_mysql.py",
+        "--rooms-only",
+        "--verbose",
+      ]
+
+volumes:
+  mysql-data:
+    name: c270-hotel-mysql-data
