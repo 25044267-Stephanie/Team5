@@ -213,11 +213,20 @@ PY
                       sh -c 'test -f /app/data.json && \
                              test -f /app/scripts/migrate_json_to_mysql.py && \
                              test -f /app/scripts/seed_dev_users.py && \
+                             test -s /app/static/style.css && \
+                             test -d /app/templates && \
+                             test -f /app/templates/admin_dashboard.html && \
+                             test -f /app/templates/_styles.html && \
                              python - <<'"'"'PY'"'"'
 import json
+from pathlib import Path
 rooms = json.load(open("/app/data.json", encoding="utf-8")).get("rooms") or []
 assert len(rooms) == 25, len(rooms)
+css = Path("/app/static/style.css").read_text(encoding="utf-8")
+assert "@import url(" not in css, "blocking font @import must not remain in style.css"
+assert ".navbar" in css and ".dashboard-grid" in css
 print("image_data_json_rooms=", len(rooms))
+print("image_style_css_bytes=", Path("/app/static/style.css").stat().st_size)
 PY'
                 '''
             }
